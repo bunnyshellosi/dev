@@ -2,6 +2,7 @@ package remote
 
 import (
 	"fmt"
+	"time"
 
 	"bunnyshell.com/dev/pkg/k8s"
 	k8sTools "bunnyshell.com/dev/pkg/k8s/tools"
@@ -14,42 +15,47 @@ import (
 )
 
 type RemoteDevelopment struct {
-	SSHPrivateKeyPath  string
-	SSHPublicKeyPath   string
-	Spinner            *spinner.Spinner
-	KubernetesClient   *k8s.KubernetesClient
-	RemoteSSHForwarder *portforward.PortForwarder
+	sshPrivateKeyPath string
+	sshPublicKeyPath  string
 
-	Namespace  *coreV1.Namespace
-	Deployment *appsV1.Deployment
-	Container  *coreV1.Container
+	spinner *spinner.Spinner
 
-	LocalSyncPath  string
-	RemoteSyncPath string
+	kubernetesClient   *k8s.KubernetesClient
+	remoteSSHForwarder *portforward.PortForwarder
 
-	StopChannel chan bool
+	namespace  *coreV1.Namespace
+	deployment *appsV1.Deployment
+	container  *coreV1.Container
+
+	localSyncPath  string
+	remoteSyncPath string
+
+	stopChannel chan bool
+
+	startedAt int64
 }
 
 func NewRemoteDevelopment() *RemoteDevelopment {
 	return &RemoteDevelopment{
-		StopChannel: make(chan bool),
-		Spinner:     util.MakeSpinner(" Remote Development"),
+		stopChannel: make(chan bool),
+		spinner:     util.MakeSpinner(" Remote Development"),
+		startedAt:   time.Now().Unix(),
 	}
 }
 
 func (r *RemoteDevelopment) WithLocalSyncPath(localSyncPath string) *RemoteDevelopment {
-	r.LocalSyncPath = localSyncPath
+	r.localSyncPath = localSyncPath
 	return r
 }
 
 func (r *RemoteDevelopment) WithRemoteSyncPath(remoteSyncPath string) *RemoteDevelopment {
-	r.RemoteSyncPath = remoteSyncPath
+	r.remoteSyncPath = remoteSyncPath
 	return r
 }
 
 func (r *RemoteDevelopment) WithSSH(sshPrivateKeyPath, sshPublicKeyPath string) *RemoteDevelopment {
-	r.SSHPrivateKeyPath = sshPrivateKeyPath
-	r.SSHPublicKeyPath = sshPublicKeyPath
+	r.sshPrivateKeyPath = sshPrivateKeyPath
+	r.sshPublicKeyPath = sshPublicKeyPath
 	return r
 }
 
@@ -59,46 +65,83 @@ func (r *RemoteDevelopment) WithKubernetesClient(kubeConfigPath string) *RemoteD
 		panic(err)
 	}
 
-	r.KubernetesClient = kubernetesClient
+	r.kubernetesClient = kubernetesClient
 
 	return r
 }
 
 func (r *RemoteDevelopment) WithNamespace(namespace *coreV1.Namespace) *RemoteDevelopment {
-	r.Namespace = namespace
+	r.namespace = namespace
 	return r
+}
+
+func (r *RemoteDevelopment) WithNamespaceName(namespaceName string) *RemoteDevelopment {
+	namespace, err := r.kubernetesClient.GetNamespace(namespaceName)
+	if err != nil {
+		panic(err)
+	}
+
+	return r.WithNamespace(namespace)
+}
+
+func (r *RemoteDevelopment) WithNamespaceFromKubeConfig() *RemoteDevelopment {
+	namespace, err := r.kubernetesClient.GetKubeConfigNamespace()
+	if err != nil {
+		panic(err)
+	}
+
+	return r.WithNamespaceName(namespace)
 }
 
 func (r *RemoteDevelopment) WithDeployment(deployment *appsV1.Deployment) *RemoteDevelopment {
-	if r.Namespace == nil {
-		panic(fmt.Errorf("please select a namespace first"))
+	if r.namespace == nil {
+		panic(fmt.Errorf("you have to select a namespace before selecting a deployment"))
 	}
-	if r.Namespace.GetName() != deployment.GetNamespace() {
+
+	if r.namespace.GetName() != deployment.GetNamespace() {
 		panic(fmt.Errorf(
 			"the deployment's namespace(\"%s\") doesn't match the selected namespace \"%s\"",
 			deployment.GetNamespace(),
-			r.Namespace.GetName(),
+			r.namespace.GetName(),
 		))
 	}
 
-	r.Deployment = deployment
+	r.deployment = deployment
 	return r
 }
 
+func (r *RemoteDevelopment) WithDeploymentName(deploymentName string) *RemoteDevelopment {
+	deployment, err := r.kubernetesClient.GetDeployment(r.namespace.GetName(), deploymentName)
+	if err != nil {
+		panic(err)
+	}
+
+	return r.WithDeployment(deployment)
+}
+
 func (r *RemoteDevelopment) WithContainer(container *coreV1.Container) *RemoteDevelopment {
-	if r.Deployment == nil {
+	if r.deployment == nil {
 		panic(fmt.Errorf("please select a deployment first"))
 	}
 
-	deploymentContainer := k8sTools.GetDeploymentContainerByName(r.Deployment, container.Name)
+	deploymentContainer := k8sTools.GetDeploymentContainerByName(r.deployment, container.Name)
 	if deploymentContainer == nil {
 		panic(fmt.Errorf(
 			"the deployment \"%s\" has no container named \"%s\"",
-			r.Deployment.GetName(),
+			r.deployment.GetName(),
 			container.Name,
 		))
 	}
 
-	r.Container = container
+	r.container = container
 	return r
+}
+
+func (r *RemoteDevelopment) WithContainerName(containerName string) *RemoteDevelopment {
+	container := k8sTools.GetDeploymentContainerByName(r.deployment, containerName)
+	if container == nil {
+		panic(fmt.Errorf("container \"%s\" not found", container.Name))
+	}
+
+	return r.WithContainer(container)
 }

@@ -16,7 +16,7 @@ var (
 )
 
 func (r *RemoteDevelopment) SelectNamespace() error {
-	namespaces, err := r.KubernetesClient.ListNamespaces()
+	namespaces, err := r.kubernetesClient.ListNamespaces()
 	if err != nil {
 		return err
 	}
@@ -26,7 +26,7 @@ func (r *RemoteDevelopment) SelectNamespace() error {
 	}
 
 	if len(namespaces.Items) == 1 {
-		r.Namespace = namespaces.Items[0].DeepCopy()
+		r.namespace = namespaces.Items[0].DeepCopy()
 		return nil
 	}
 
@@ -53,11 +53,11 @@ func (r *RemoteDevelopment) SelectNamespace() error {
 }
 
 func (r *RemoteDevelopment) SelectDeployment() error {
-	if r.Namespace == nil {
+	if r.namespace == nil {
 		return ErrNoNamespaceSelected
 	}
 
-	deployments, err := r.KubernetesClient.ListDeployments(r.Namespace.GetName())
+	deployments, err := r.kubernetesClient.ListDeployments(r.namespace.GetName())
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func (r *RemoteDevelopment) SelectDeployment() error {
 	}
 
 	if len(deployments.Items) == 1 {
-		r.Deployment = deployments.Items[0].DeepCopy()
+		r.deployment = deployments.Items[0].DeepCopy()
 		return nil
 	}
 
@@ -94,13 +94,13 @@ func (r *RemoteDevelopment) SelectDeployment() error {
 }
 
 func (r *RemoteDevelopment) SelectContainer() error {
-	if r.Deployment == nil {
+	if r.deployment == nil {
 		return ErrNoDeploymentSelected
 	}
 
-	podContainers := r.Deployment.Spec.Template.Spec.Containers
+	podContainers := r.deployment.Spec.Template.Spec.Containers
 	if len(podContainers) == 1 {
-		r.Container = podContainers[0].DeepCopy()
+		r.container = podContainers[0].DeepCopy()
 		return nil
 	}
 
@@ -142,7 +142,7 @@ func (r *RemoteDevelopment) SelectLocalSyncPath() error {
 }
 
 func (r *RemoteDevelopment) SelectRemoteSyncPath() error {
-	syncPath, err := util.AskPath("Remote Path", "", util.IsDirectoryValidator)
+	syncPath, err := util.Ask("Remote Path", "")
 	if err != nil {
 		return err
 	}

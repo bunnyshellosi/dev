@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/shiena/ansicolor"
+	"golang.org/x/term"
 )
 
 func stdStreams() (stdIn io.ReadCloser, stdOut, stdErr io.Writer) {

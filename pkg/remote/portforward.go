@@ -10,30 +10,30 @@ import (
 
 func (r *RemoteDevelopment) ensureRemoteSSHPortForward() error {
 	r.StartSpinner(" Start Remote SSH Port Forward")
-	defer r.Spinner.Stop()
+	defer r.spinner.Stop()
 
 	remoteDevPod, err := r.getRemoteDevPod()
 	if err != nil {
 		return err
 	}
 
-	forwarder, err := r.KubernetesClient.PortForwardRemoteSSH(remoteDevPod)
+	forwarder, err := r.kubernetesClient.PortForwardRemoteSSH(remoteDevPod)
 	if err != nil {
 		return err
 	}
-	r.RemoteSSHForwarder = forwarder
+	r.remoteSSHForwarder = forwarder
 
 	return nil
 }
 
 func (r *RemoteDevelopment) getRemoteDevPod() (*coreV1.Pod, error) {
-	namespace := r.Deployment.GetNamespace()
-	labelSelector := apiMetaV1.LabelSelector{MatchLabels: r.Deployment.Spec.Selector.MatchLabels}
+	namespace := r.deployment.GetNamespace()
+	labelSelector := apiMetaV1.LabelSelector{MatchLabels: r.deployment.Spec.Selector.MatchLabels}
 	listOptions := apiMetaV1.ListOptions{
 		LabelSelector: labels.Set(labelSelector.MatchLabels).String(),
 	}
 
-	podList, err := r.KubernetesClient.ListPods(namespace, listOptions)
+	podList, err := r.kubernetesClient.ListPods(namespace, listOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -44,5 +44,5 @@ func (r *RemoteDevelopment) getRemoteDevPod() (*coreV1.Pod, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("pod not found for component %v", r.Deployment.GetName())
+	return nil, fmt.Errorf("pod not found for component %v", r.deployment.GetName())
 }

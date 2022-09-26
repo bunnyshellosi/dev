@@ -5,4 +5,6 @@ var (
 	Commit  = "none"
 
 	LatestReleaseUrl = "https://github.com/bunnyshellosi/dev/releases/latest"
+
+	SSHServerVersion = "latest"
 )

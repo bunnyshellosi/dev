@@ -2,12 +2,12 @@ package remote
 
 func (r *RemoteDevelopment) StartSpinner(suffix string) {
 	if suffix != "" {
-		r.Spinner.Suffix = suffix
+		r.spinner.Suffix = suffix
 	}
 
-	r.Spinner.Start()
+	r.spinner.Start()
 }
 
 func (r *RemoteDevelopment) StopSpinner() {
-	r.Spinner.Stop()
+	r.spinner.Stop()
 }

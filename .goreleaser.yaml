@@ -12,7 +12,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w -X bunnyshell.com/dev/pkg/build.Version={{.Version}} -X bunnyshell.com/dev/pkg/build.Commit={{.Commit}}
+      - -s -w -X bunnyshell.com/dev/pkg/build.Version={{.Version}} -X bunnyshell.com/dev/pkg/build.Commit={{.Commit}} -X bunnyshell.com/dev/pkg/build.SSHServerVersion=0.2.0
     mod_timestamp: '{{ .CommitTimestamp }}'
 
 archives:

@@ -1,12 +1,9 @@
 package remote
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 
 	"bunnyshell.com/dev/pkg/k8s"
-	k8sTools "bunnyshell.com/dev/pkg/k8s/tools"
 	"bunnyshell.com/dev/pkg/remote"
 )
 
@@ -26,40 +23,21 @@ func init() {
 			remoteDevelopment := remote.NewRemoteDevelopment()
 			remoteDevelopment.WithKubernetesClient(k8s.GetKubeConfigFilePath())
 
-			// input
+			// wizard
 			if namespaceName != "" {
-				namespace, err := remoteDevelopment.KubernetesClient.GetNamespace(namespaceName)
-				if err != nil {
-					return err
-				}
-				remoteDevelopment.WithNamespace(namespace)
+				remoteDevelopment.WithNamespaceName(namespaceName)
 			} else if err := remoteDevelopment.SelectNamespace(); err != nil {
 				return err
 			}
 
 			if deploymentName != "" {
-				deployment, err := remoteDevelopment.KubernetesClient.GetDeployment(
-					remoteDevelopment.Namespace.GetName(),
-					deploymentName,
-				)
-				if err != nil {
-					return err
-				}
-				remoteDevelopment.WithDeployment(deployment)
+				remoteDevelopment.WithDeploymentName(deploymentName)
 			} else if err := remoteDevelopment.SelectDeployment(); err != nil {
 				return err
 			}
 
 			if containerName != "" {
-				container := k8sTools.GetDeploymentContainerByName(remoteDevelopment.Deployment, containerName)
-				if container == nil {
-					return fmt.Errorf(
-						"the deployment \"%s\" has no container named \"%s\"",
-						remoteDevelopment.Deployment.GetName(),
-						container.Name,
-					)
-				}
-				remoteDevelopment.WithContainer(container)
+				remoteDevelopment.WithContainerName(containerName)
 			} else if err := remoteDevelopment.SelectContainer(); err != nil {
 				return err
 			}
@@ -81,6 +59,7 @@ func init() {
 				return err
 			}
 
+			// start
 			if err := remoteDevelopment.StartSSHTerminal(); err != nil {
 				return err
 			}
@@ -91,7 +70,7 @@ func init() {
 
 	command.Flags().StringVarP(&namespaceName, "namespace", "n", "", "Kubernetes Namespace")
 	command.Flags().StringVarP(&deploymentName, "deployment", "d", "", "Kubernetes Deployment")
-	command.Flags().StringVarP(&containerName, "container", "c", "", "Kubernetes Container")
+	command.Flags().StringVar(&containerName, "container", "", "Kubernetes Container")
 	command.Flags().StringVarP(&localSyncPath, "local-sync-path", "l", "", "Local folder path to sync")
 	command.Flags().StringVarP(&remoteSyncPath, "remote-sync-path", "r", "", "Remote folder path to sync")
 

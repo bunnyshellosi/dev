@@ -17,6 +17,14 @@ func (r *RemoteDevelopment) Up() error {
 		return err
 	}
 
+	if err := r.ensureSecret(); err != nil {
+		return err
+	}
+
+	if err := r.ensurePVC(); err != nil {
+		return err
+	}
+
 	if err := r.prepareDeployment(); err != nil {
 		return err
 	}
@@ -37,7 +45,19 @@ func (r *RemoteDevelopment) Up() error {
 }
 
 func (r *RemoteDevelopment) Down() error {
-	return nil
+	if err := r.restoreDeployment(); err != nil {
+		return err
+	}
+
+	if err := r.deletePVC(); err != nil {
+		return err
+	}
+
+	if err := r.deleteSecret(); err != nil {
+		return err
+	}
+
+	return r.terminateMutagenDaemon()
 }
 
 func (r *RemoteDevelopment) Wait() error {
@@ -50,7 +70,7 @@ func (r *RemoteDevelopment) Wait() error {
 	case sig := <-signalTermination:
 		r.Close()
 		return fmt.Errorf("terminated by signal: %s", sig)
-	case <-r.StopChannel:
+	case <-r.stopChannel:
 		return nil
 	}
 }
@@ -59,12 +79,12 @@ func (r *RemoteDevelopment) Close() {
 	r.terminateMutagenSession()
 
 	// close k8s remote ssh portforwarding
-	if r.RemoteSSHForwarder != nil {
-		r.RemoteSSHForwarder.Close()
+	if r.remoteSSHForwarder != nil {
+		r.remoteSSHForwarder.Close()
 	}
 
 	// close cli command
-	if r.StopChannel != nil {
-		close(r.StopChannel)
+	if r.stopChannel != nil {
+		close(r.stopChannel)
 	}
 }

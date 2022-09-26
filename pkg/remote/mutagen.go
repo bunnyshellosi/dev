@@ -3,6 +3,8 @@ package remote
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -49,7 +51,7 @@ func ensureMutagenConfigFile() error {
 		"node_modules",
 		"vendor",
 	})
-	defaults := mutagenConfig.NewSyncDefaults().WithMode(mutagenConfig.TwoWayResolved).WithIgnore(ignore)
+	defaults := mutagenConfig.NewSyncDefaults().WithMode(mutagenConfig.OneWayReplica).WithIgnore(ignore)
 	sync := mutagenConfig.NewSync().WithDefaults(defaults)
 	config := mutagenConfig.NewConfiguration().WithSync(sync)
 
@@ -59,7 +61,6 @@ func ensureMutagenConfigFile() error {
 	}
 
 	return os.WriteFile(mutagenConfigFilePath, data, 0644)
-
 }
 
 func (r *RemoteDevelopment) startMutagenSession() error {
@@ -78,20 +79,20 @@ func (r *RemoteDevelopment) startMutagenSession() error {
 	mutagenArgs := []string{
 		"sync",
 		"create",
-		"--name", r.getMutagenSessionName(),
+		"-n", r.getMutagenSessionName(),
 		"--no-global-configuration",
-		"--configuration-file", mutagenConfigFilePath,
-		r.LocalSyncPath,
+		"-c", mutagenConfigFilePath,
+		r.localSyncPath,
 		fmt.Sprintf(
 			"%s:%s",
 			r.getSSHHostname(),
-			r.RemoteSyncPath,
+			r.remoteSyncPath,
 		),
 	}
 
 	mutagenCmd := exec.Command(mutagenBinPath, mutagenArgs...)
-	output, err := mutagenCmd.CombinedOutput()
-	fmt.Println(string(output))
+	_, err = mutagenCmd.CombinedOutput()
+
 	return err
 }
 
@@ -113,8 +114,31 @@ func (r *RemoteDevelopment) terminateMutagenSession() error {
 	return nil
 }
 
+func (r *RemoteDevelopment) terminateMutagenDaemon() error {
+	mutagenBinPath, err := getMutagenBinPath()
+	if err != nil {
+		return err
+	}
+
+	mutagenArgs := []string{
+		"daemon",
+		"stop",
+	}
+
+	mutagenCmd := exec.Command(mutagenBinPath, mutagenArgs...)
+	mutagenCmd.Run()
+
+	return nil
+}
+
 func (r *RemoteDevelopment) getMutagenSessionName() string {
-	return fmt.Sprintf("r-%s-%s-%s", r.getRemoteSyncPathHash()[:6], r.Deployment.GetName(), r.Deployment.GetNamespace())
+	return fmt.Sprintf("rd-%s", r.getMutagenSessionKey()[:16])
+}
+
+func (r *RemoteDevelopment) getMutagenSessionKey() string {
+	plaintext := fmt.Sprintf("%s-%s-%s", r.remoteSyncPath, r.deployment.GetName(), r.deployment.GetNamespace())
+	hash := md5.Sum([]byte(plaintext))
+	return hex.EncodeToString(hash[:])
 }
 
 func getMutagenBinPath() (string, error) {
@@ -218,7 +242,7 @@ func extractMutagenBinTarGz(source, destination string) error {
 			return err
 		}
 
-		if header.Name == "mutagen" {
+		if header.Name == getMutagenBinFilename() {
 			destinationFile, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, header.FileInfo().Mode())
 			if err != nil {
 				return err

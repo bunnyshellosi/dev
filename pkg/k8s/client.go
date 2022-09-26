@@ -95,6 +95,15 @@ func NewKubernetesClient(kubeConfigPath string) (*KubernetesClient, error) {
 	return newKubernetes, nil
 }
 
+func (k *KubernetesClient) GetKubeConfigNamespace() (string, error) {
+	namespace, _, err := k.config.Namespace()
+	return namespace, err
+}
+
+func (k *KubernetesClient) UpdateDeployment(namespace string, deployment *appsV1.Deployment) (*appsV1.Deployment, error) {
+	return k.clientSet.AppsV1().Deployments(namespace).Update(context.TODO(), deployment, apiMetaV1.UpdateOptions{})
+}
+
 func (k *KubernetesClient) ListNamespaces() (*coreV1.NamespaceList, error) {
 	return k.clientSet.CoreV1().Namespaces().List(context.TODO(), apiMetaV1.ListOptions{})
 }
@@ -103,13 +112,12 @@ func (k *KubernetesClient) ListDeployments(namespace string) (*appsV1.Deployment
 	return k.clientSet.AppsV1().Deployments(namespace).List(context.TODO(), apiMetaV1.ListOptions{})
 }
 
-func (k *KubernetesClient) DeletePVC(name string) error {
-	namespace, _, err := k.config.Namespace()
-	if err != nil {
-		return err
-	}
-
+func (k *KubernetesClient) DeletePVC(namespace, name string) error {
 	return k.clientSet.CoreV1().PersistentVolumeClaims(namespace).Delete(context.TODO(), name, apiMetaV1.DeleteOptions{})
+}
+
+func (k *KubernetesClient) DeleteSecret(namespace, name string) error {
+	return k.clientSet.CoreV1().Secrets(namespace).Delete(context.TODO(), name, apiMetaV1.DeleteOptions{})
 }
 
 func (k *KubernetesClient) GetNamespace(name string) (*coreV1.Namespace, error) {

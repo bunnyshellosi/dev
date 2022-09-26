@@ -8,8 +8,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
+	"bunnyshell.com/dev/pkg/build"
 	"bunnyshell.com/dev/pkg/k8s/patch"
 
 	appsV1 "k8s.io/api/apps/v1"
@@ -18,23 +18,28 @@ import (
 	apiMetaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/watch"
+	appsCoreV1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	applyCoreV1 "k8s.io/client-go/applyconfigurations/core/v1"
+	applyMetaV1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
 const (
 	MetadataPrefix    = "remote-dev.bunnyshell.com/"
-	MetadataEnabled   = MetadataPrefix + "enabled"
+	MetadataActive    = MetadataPrefix + "active"
 	MetadataStartedAt = MetadataPrefix + "started-at"
-	MetadataComponent = MetadataPrefix + "component"
+	MetadataService   = MetadataPrefix + "service"
 	MetadataContainer = MetadataPrefix + "container"
 	MetadataRollback  = MetadataPrefix + "rollback-manifest"
+
+	MetadataKubeCTLLastAppliedConf = "kubectl.kubernetes.io/last-applied-configuration"
+	MetadataK8SRevision            = "deployment.kubernetes.io/revision"
 
 	VolumeNameBinaries = "remote-dev-bin"
 	VolumeNameConfig   = "remote-dev-config"
 	VolumeNameWork     = "remote-dev-work"
 
-	SecretNameFormat = "%s-remote-dev"
-	PVCNameFormat    = "%s-remote-dev"
+	SecretName    = "remote-development"
+	PVCNameFormat = "%s-remote-dev"
 
 	SecretAuthorizedKeysKeyName = "authorized_keys"
 	SecretAuthorizedKeysPath    = "ssh/authorized_keys"
@@ -42,8 +47,7 @@ const (
 	ContainerNameBinaries = "remote-dev-bin"
 	ContainerNameWork     = "remote-dev-work"
 
-	// @todo inject this at build time maybe :?
-	BinariesImage = "public.ecr.aws/x0p9x6p7/bunnyshell/remote-binaries:latest"
+	SSHServerImage = "public.ecr.aws/x0p9x6p7/bunnyshell/remote-binaries"
 
 	// ConfigSourceDir = "config"
 )
@@ -55,6 +59,7 @@ func (r *RemoteDevelopment) prepareDeployment() error {
 	strategy := appsV1.RecreateDeploymentStrategyType
 	var replicas int32 = 1
 	deploymentPatch := &patch.DeploymentPatchConfiguration{
+		ObjectMetaApplyConfiguration: &applyMetaV1.ObjectMetaApplyConfiguration{},
 		Spec: &patch.DeploymentSpecPatchConfiguration{
 			Strategy: &patch.DeploymentStrategyPatchConfiguration{
 				Type:          &strategy,
@@ -64,6 +69,23 @@ func (r *RemoteDevelopment) prepareDeployment() error {
 		},
 	}
 
+	currentManifestSnapshot, err := r.getCurrentManifestSnapshot()
+	if err != nil {
+		return err
+	}
+
+	annotations := make(map[string]string)
+	annotations[MetadataStartedAt] = strconv.FormatInt(r.startedAt, 10)
+	annotations[MetadataContainer] = r.container.Name
+	_, ok := r.deployment.Annotations[MetadataRollback]
+	if !ok {
+		annotations[MetadataRollback] = string(currentManifestSnapshot)
+	}
+	labels := make(map[string]string)
+	labels[MetadataActive] = "true"
+
+	deploymentPatch.WithAnnotations(annotations).WithLabels(labels)
+
 	r.preparePodTemplateSpec(deploymentPatch)
 
 	data, err := json.Marshal(deploymentPatch)
@@ -71,41 +93,87 @@ func (r *RemoteDevelopment) prepareDeployment() error {
 		return err
 	}
 
-	if err := r.ensureSecret(); err != nil {
+	return r.kubernetesClient.PatchDeployment(r.deployment.GetNamespace(), r.deployment.GetName(), data)
+}
+
+func (r *RemoteDevelopment) restoreDeployment() error {
+	snapshot, ok := r.deployment.Annotations[MetadataRollback]
+	if !ok {
+		return fmt.Errorf("no rollback manifest available")
+	}
+
+	deployment := &appsV1.Deployment{}
+	if err := json.Unmarshal([]byte(snapshot), deployment); err != nil {
 		return err
 	}
 
-	if err := r.ensurePVC(); err != nil {
-		return err
+	_, err := r.kubernetesClient.UpdateDeployment(deployment.GetNamespace(), deployment)
+	return err
+}
+
+func (r *RemoteDevelopment) getCurrentManifestSnapshot() (string, error) {
+	// if snapshot, ok := r.Deployment.Annotations[MetadataKubeCTLLastAppliedConf]; ok {
+	// 	return snapshot
+	// }
+
+	fullSnapshot, err := json.Marshal(r.deployment)
+	if err != nil {
+		return "", err
 	}
 
-	return r.KubernetesClient.PatchDeployment(r.Deployment.Namespace, r.Deployment.Name, data)
+	applyDeployment := &appsCoreV1.DeploymentApplyConfiguration{}
+	if err := json.Unmarshal(fullSnapshot, applyDeployment); err != nil {
+		return "", err
+	}
+
+	// strip unnecessary data
+	applyDeployment.WithStatus(nil)
+	applyDeployment.Generation = nil
+	applyDeployment.UID = nil
+	applyDeployment.ResourceVersion = nil
+	annotations := make(map[string]string)
+	for key, value := range applyDeployment.Annotations {
+		if key == MetadataK8SRevision || key == MetadataKubeCTLLastAppliedConf {
+			continue
+		}
+
+		annotations[key] = value
+	}
+	applyDeployment.Annotations = annotations
+
+	snapshot, err := json.Marshal(applyDeployment)
+	if err != nil {
+		return "", err
+	}
+
+	return string(snapshot), nil
 }
 
 func (r *RemoteDevelopment) ensurePVC() error {
 	labels := make(map[string]string)
-	labels[MetadataContainer] = r.Container.Name
+	labels[MetadataActive] = "true"
+
 	resourceLimits := coreV1.ResourceList{
 		coreV1.ResourceStorage: resource.MustParse("2Gi"),
 	}
-	remoteDevPVC := applyCoreV1.PersistentVolumeClaim(r.getPVCName(), r.Deployment.Namespace).
+
+	remoteDevPVC := applyCoreV1.PersistentVolumeClaim(r.getPVCName(), r.deployment.GetNamespace()).
 		WithLabels(labels).
 		WithSpec(applyCoreV1.PersistentVolumeClaimSpec().
 			WithAccessModes(coreV1.ReadWriteOnce).
 			WithResources(applyCoreV1.ResourceRequirements().
 				WithRequests(resourceLimits)))
 
-	return r.KubernetesClient.ApplyPVC(remoteDevPVC)
+	return r.kubernetesClient.ApplyPVC(remoteDevPVC)
 }
 
 func (r *RemoteDevelopment) preparePodTemplateSpec(deploymentPatch *patch.DeploymentPatchConfiguration) {
-	podLabels := make(map[string]string)
-	podLabels[MetadataEnabled] = "true"
-	podLabels[MetadataComponent] = r.Deployment.GetName()
-
 	podAnnotations := make(map[string]string)
-	podAnnotations[MetadataStartedAt] = strconv.FormatInt(time.Now().Unix(), 10)
-	podAnnotations[MetadataContainer] = r.Container.Name
+	podAnnotations[MetadataStartedAt] = strconv.FormatInt(r.startedAt, 10)
+	podAnnotations[MetadataContainer] = r.container.Name
+	podLabels := make(map[string]string)
+	podLabels[MetadataActive] = "true"
+	podLabels[MetadataService] = r.deployment.GetName()
 
 	deploymentPatch.Spec.Template = applyCoreV1.PodTemplateSpec().
 		WithAnnotations(podAnnotations).
@@ -147,7 +215,8 @@ func (r *RemoteDevelopment) prepareVolumes(deploymentPatch *patch.DeploymentPatc
 
 func (r *RemoteDevelopment) prepareInitContainers(deploymentPatch *patch.DeploymentPatchConfiguration) {
 	pullPolicy := coreV1.PullIfNotPresent
-	if strings.Contains(BinariesImage, ":latest") {
+	image := r.getSSHServerImage()
+	if strings.Contains(image, ":latest") {
 		pullPolicy = coreV1.PullAlways
 	}
 
@@ -155,7 +224,7 @@ func (r *RemoteDevelopment) prepareInitContainers(deploymentPatch *patch.Deploym
 	binariesInitContainer := applyCoreV1.Container().
 		WithName(ContainerNameBinaries).
 		WithCommand("sh", "-c", fmt.Sprintf("cp -p /usr/local/bin/* %s", binariesVolumeMountPath)).
-		WithImage(BinariesImage).
+		WithImage(image).
 		WithImagePullPolicy(pullPolicy).
 		WithVolumeMounts(applyCoreV1.VolumeMount().
 			WithName(VolumeNameBinaries).
@@ -168,10 +237,10 @@ func (r *RemoteDevelopment) prepareInitContainers(deploymentPatch *patch.Deploym
 		WithCommand("sh", "-c", fmt.Sprintf(
 			"[ \"$(ls -A %s)\" ] || (cp -Rp %s/. %s; exit 0)",
 			workVolumeMountPath,
-			r.RemoteSyncPath,
+			r.remoteSyncPath,
 			workVolumeMountPath,
 		)).
-		WithImage(r.Container.Image).
+		WithImage(r.container.Image).
 		WithImagePullPolicy(coreV1.PullIfNotPresent).
 		WithVolumeMounts(applyCoreV1.VolumeMount().
 			WithName(VolumeNameWork).
@@ -181,8 +250,12 @@ func (r *RemoteDevelopment) prepareInitContainers(deploymentPatch *patch.Deploym
 	deploymentPatch.Spec.Template.Spec.WithInitContainers(binariesInitContainer, workInitContainer)
 }
 
+func (r *RemoteDevelopment) getSSHServerImage() string {
+	return fmt.Sprintf("%s:%s", SSHServerImage, build.SSHServerVersion)
+}
+
 func (r *RemoteDevelopment) getRemoteSyncPathHash() string {
-	hash := md5.Sum([]byte(r.RemoteSyncPath))
+	hash := md5.Sum([]byte(r.remoteSyncPath))
 	return hex.EncodeToString(hash[:])
 }
 
@@ -202,7 +275,7 @@ func (r *RemoteDevelopment) prepareContainer(deploymentPatch *patch.DeploymentPa
 			WithMountPath(secretsVolumeMountPath),
 		applyCoreV1.VolumeMount().
 			WithName(VolumeNameWork).
-			WithMountPath(r.RemoteSyncPath).
+			WithMountPath(r.remoteSyncPath).
 			WithSubPath(appSourceDir),
 		// applyCoreV1.VolumeMount().
 		// 	WithName(VolumeNameWork).
@@ -212,7 +285,7 @@ func (r *RemoteDevelopment) prepareContainer(deploymentPatch *patch.DeploymentPa
 
 	startCommand := binariesVolumeMountPath + "/start.sh"
 	container := applyCoreV1.Container().
-		WithName(r.Container.Name).
+		WithName(r.container.Name).
 		WithCommand(startCommand).
 		WithVolumeMounts(volumeMounts...)
 
@@ -220,52 +293,56 @@ func (r *RemoteDevelopment) prepareContainer(deploymentPatch *patch.DeploymentPa
 }
 
 func (r *RemoteDevelopment) getSecretName() string {
-	return fmt.Sprintf(SecretNameFormat, r.Deployment.Name)
+	return SecretName
 }
 
 func (r *RemoteDevelopment) getPVCName() string {
-	return fmt.Sprintf(PVCNameFormat, r.Container.Name)
+	return fmt.Sprintf(PVCNameFormat, r.deployment.GetName())
 }
 
 func (r *RemoteDevelopment) ensureSecret() error {
 	r.StartSpinner(" Setup k8s secret")
-	defer r.Spinner.Stop()
+	defer r.spinner.Stop()
 
-	sshPublicKeyData, err := os.ReadFile(r.SSHPublicKeyPath)
+	sshPublicKeyData, err := os.ReadFile(r.sshPublicKeyPath)
 	if err != nil {
 		return err
 	}
 
-	namespace := r.Deployment.Namespace
+	namespace := r.deployment.GetNamespace()
 
 	labels := make(map[string]string)
-	labels[MetadataEnabled] = "true"
-	labels[MetadataComponent] = r.Deployment.GetName()
+	labels[MetadataActive] = "true"
+	labels[MetadataService] = r.deployment.GetName()
 
 	secretData := make(map[string][]byte)
 	secretData[SecretAuthorizedKeysKeyName] = sshPublicKeyData
 
 	secret := applyCoreV1.Secret(r.getSecretName(), namespace).WithLabels(labels).WithData(secretData)
-	return r.KubernetesClient.ApplySecret(secret)
+	return r.kubernetesClient.ApplySecret(secret)
 }
 
-func (r *RemoteDevelopment) deleteRemoteDevPVC() error {
-	return r.KubernetesClient.DeletePVC(r.getPVCName())
+func (r *RemoteDevelopment) deletePVC() error {
+	return r.kubernetesClient.DeletePVC(r.deployment.GetNamespace(), r.getPVCName())
+}
+
+func (r *RemoteDevelopment) deleteSecret() error {
+	return r.kubernetesClient.DeleteSecret(r.deployment.GetNamespace(), r.getSecretName())
 }
 
 func (r *RemoteDevelopment) waitPodReady() error {
-	r.StartSpinner(" Waiting for pod to be ready for remote development")
+	r.StartSpinner(" Waiting for pod to be ready")
 	defer r.StopSpinner()
 
-	namespace := r.Deployment.GetNamespace()
-	labelSelector := apiMetaV1.LabelSelector{MatchLabels: r.Deployment.Spec.Selector.MatchLabels}
+	namespace := r.deployment.GetNamespace()
+	labelSelector := apiMetaV1.LabelSelector{MatchLabels: r.deployment.Spec.Selector.MatchLabels}
 	timeout := int64(120)
 	listOptions := apiMetaV1.ListOptions{
 		LabelSelector:  labels.Set(labelSelector.MatchLabels).String(),
 		TimeoutSeconds: &timeout,
 	}
 
-	podList, err := r.KubernetesClient.ListPods(namespace, listOptions)
+	podList, err := r.kubernetesClient.ListPods(namespace, listOptions)
 	if err != nil {
 		return err
 	}
@@ -281,7 +358,7 @@ func (r *RemoteDevelopment) waitPodReady() error {
 		return nil
 	}
 
-	watcher, err := r.KubernetesClient.WatchPods(namespace, listOptions)
+	watcher, err := r.kubernetesClient.WatchPods(namespace, listOptions)
 	if err != nil {
 		return err
 	}
@@ -299,12 +376,12 @@ func (r *RemoteDevelopment) waitPodReady() error {
 		}
 
 		for _, containerStatus := range pod.Status.ContainerStatuses {
-			if containerStatus.Name == r.Container.Name && containerStatus.Ready {
+			if containerStatus.Name == r.container.Name && containerStatus.Ready {
 				return nil
 			}
 		}
 	}
 
 	// timeout reached
-	return fmt.Errorf("failed to start remote development")
+	return fmt.Errorf("pod not ready")
 }

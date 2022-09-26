@@ -104,9 +104,9 @@ func (r *RemoteDevelopment) ensureSSHConfigEntry() error {
 	bunnyshellSSH.RemoveHost(config, hostname)
 	host, err := newSSHConfigHost(
 		hostname,
-		r.KubernetesClient.SSHPortForwardOptions.Interface,
-		strconv.Itoa(r.KubernetesClient.SSHPortForwardOptions.LocalPort),
-		r.SSHPrivateKeyPath,
+		r.kubernetesClient.SSHPortForwardOptions.Interface,
+		strconv.Itoa(r.kubernetesClient.SSHPortForwardOptions.LocalPort),
+		r.sshPrivateKeyPath,
 	)
 	if err != nil {
 		return err
@@ -122,7 +122,7 @@ func (r *RemoteDevelopment) ensureSSHConfigEntry() error {
 }
 
 func (r *RemoteDevelopment) getSSHHostname() string {
-	return fmt.Sprintf("%s.%s.bunnyshell", r.Deployment.GetName(), r.Deployment.GetNamespace())
+	return fmt.Sprintf("%s.%s.bunnyshell", r.deployment.GetName(), r.deployment.GetNamespace())
 }
 
 func newSSHConfigHost(hostname, iface, port, identityFile string) (*ssh_config.Host, error) {
@@ -151,9 +151,9 @@ func newSSHConfigHost(hostname, iface, port, identityFile string) (*ssh_config.H
 
 func (r *RemoteDevelopment) StartSSHTerminal() error {
 	terminal := bunnyshellSSH.NewSSHTerminal(
-		r.KubernetesClient.SSHPortForwardOptions.Interface,
-		r.KubernetesClient.SSHPortForwardOptions.LocalPort,
-		bunnyshellSSH.PrivateKeyFile(r.SSHPrivateKeyPath),
+		r.kubernetesClient.SSHPortForwardOptions.Interface,
+		r.kubernetesClient.SSHPortForwardOptions.LocalPort,
+		bunnyshellSSH.PrivateKeyFile(r.sshPrivateKeyPath),
 	)
 
 	errChan := make(chan error, 1)
