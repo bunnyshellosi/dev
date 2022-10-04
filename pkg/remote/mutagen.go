@@ -91,7 +91,10 @@ func (r *RemoteDevelopment) startMutagenSession() error {
 	}
 
 	mutagenCmd := exec.Command(mutagenBinPath, mutagenArgs...)
-	_, err = mutagenCmd.CombinedOutput()
+	output, err := mutagenCmd.CombinedOutput()
+	if mutagenCmd.ProcessState.ExitCode() != 0 {
+		fmt.Println(string(output))
+	}
 
 	return err
 }
@@ -147,7 +150,7 @@ func getMutagenBinPath() (string, error) {
 		return "", err
 	}
 
-	return filepath.Join(workspaceDir, mutagenBinFilename), nil
+	return filepath.Join(workspaceDir, getMutagenBinFilename()), nil
 }
 
 func getMutagenConfigFilePath() (string, error) {
@@ -174,7 +177,7 @@ func ensureMutagenBin() error {
 	}
 
 	downloadFilename := fmt.Sprintf(mutagenDownloadFilename, runtime.GOOS, runtime.GOARCH, MutagenVersion)
-	mutagenArchivePath := filepath.Dir(mutagenBinPath) + "/" + downloadFilename
+	mutagenArchivePath := filepath.Join(filepath.Dir(mutagenBinPath), downloadFilename)
 	downloadUrl := fmt.Sprintf(mutagenDownloadUrl, MutagenVersion, downloadFilename)
 
 	err = downloadMutagenArchive(downloadUrl, mutagenArchivePath)
@@ -223,11 +226,13 @@ func extractMutagenBinTarGz(source, destination string) error {
 	if err != nil {
 		return err
 	}
+	defer sourceFile.Close()
 
 	gzipReader, err := gzip.NewReader(sourceFile)
 	if err != nil {
 		return err
 	}
+	defer gzipReader.Close()
 
 	tarReader := tar.NewReader(gzipReader)
 
