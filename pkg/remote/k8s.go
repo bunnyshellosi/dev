@@ -47,8 +47,6 @@ const (
 	ContainerNameBinaries = "remote-dev-bin"
 	ContainerNameWork     = "remote-dev-work"
 
-	SSHServerImage = "public.ecr.aws/x0p9x6p7/bunnyshell/remote-binaries"
-
 	// ConfigSourceDir = "config"
 )
 
@@ -251,7 +249,7 @@ func (r *RemoteDevelopment) prepareInitContainers(deploymentPatch *patch.Deploym
 }
 
 func (r *RemoteDevelopment) getSSHServerImage() string {
-	return fmt.Sprintf("%s:%s", SSHServerImage, build.SSHServerVersion)
+	return fmt.Sprintf("%s:%s", build.SSHServerImage, build.SSHServerVersion)
 }
 
 func (r *RemoteDevelopment) getRemoteSyncPathHash() string {

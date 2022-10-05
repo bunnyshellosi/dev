@@ -15,14 +15,13 @@ import (
 	"runtime"
 	"time"
 
+	"bunnyshell.com/dev/pkg/build"
 	mutagenConfig "bunnyshell.com/dev/pkg/mutagen/config"
 	"bunnyshell.com/dev/pkg/util"
 	"gopkg.in/yaml.v3"
 )
 
 const (
-	MutagenVersion = "v0.15.3"
-
 	mutagenBinFilename      = "mutagen"
 	mutagenConfigFilename   = "mutagen.yaml"
 	mutagenDownloadFilename = "mutagen_%s_%s_%s.tar.gz"
@@ -176,9 +175,9 @@ func ensureMutagenBin() error {
 		return nil
 	}
 
-	downloadFilename := fmt.Sprintf(mutagenDownloadFilename, runtime.GOOS, runtime.GOARCH, MutagenVersion)
+	downloadFilename := fmt.Sprintf(mutagenDownloadFilename, runtime.GOOS, runtime.GOARCH, build.MutagenVersion)
 	mutagenArchivePath := filepath.Join(filepath.Dir(mutagenBinPath), downloadFilename)
-	downloadUrl := fmt.Sprintf(mutagenDownloadUrl, MutagenVersion, downloadFilename)
+	downloadUrl := fmt.Sprintf(mutagenDownloadUrl, build.MutagenVersion, downloadFilename)
 
 	err = downloadMutagenArchive(downloadUrl, mutagenArchivePath)
 	if err != nil {
