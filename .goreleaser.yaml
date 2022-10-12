@@ -1,3 +1,5 @@
+project_name: bunnyshell-dev
+
 before:
   hooks:
     - go mod tidy
