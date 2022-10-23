@@ -365,7 +365,7 @@ func (r *RemoteDevelopment) waitPodReady() error {
 	for event := range watcher.ResultChan() {
 		pod := event.Object.(*coreV1.Pod)
 		// ignore terminating pod
-		if pod.DeletionTimestamp != nil {
+		if pod.DeletionTimestamp != nil || pod.Status.Phase != coreV1.PodRunning {
 			continue
 		}
 
