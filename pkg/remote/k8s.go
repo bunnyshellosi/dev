@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"bunnyshell.com/dev/pkg/build"
 	"bunnyshell.com/dev/pkg/k8s/patch"
@@ -17,7 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	apiMetaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/watch"
 	appsCoreV1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	applyCoreV1 "k8s.io/client-go/applyconfigurations/core/v1"
 	applyMetaV1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -334,49 +334,34 @@ func (r *RemoteDevelopment) waitPodReady() error {
 
 	namespace := r.deployment.GetNamespace()
 	labelSelector := apiMetaV1.LabelSelector{MatchLabels: r.deployment.Spec.Selector.MatchLabels}
-	timeout := int64(120)
 	listOptions := apiMetaV1.ListOptions{
-		LabelSelector:  labels.Set(labelSelector.MatchLabels).String(),
-		TimeoutSeconds: &timeout,
+		LabelSelector: labels.Set(labelSelector.MatchLabels).String(),
 	}
 
-	podList, err := r.kubernetesClient.ListPods(namespace, listOptions)
-	if err != nil {
-		return err
-	}
-	allRunning := len(podList.Items) > 0
-	for _, pod := range podList.Items {
-		if pod.DeletionTimestamp != nil || pod.Status.Phase != coreV1.PodRunning {
-			allRunning = false
-			break
-		}
-	}
-
-	if allRunning {
-		return nil
-	}
-
-	watcher, err := r.kubernetesClient.WatchPods(namespace, listOptions)
-	if err != nil {
-		return err
-	}
-
-	defer watcher.Stop()
-	for event := range watcher.ResultChan() {
-		pod := event.Object.(*coreV1.Pod)
-		// ignore terminating pod
-		if pod.DeletionTimestamp != nil || pod.Status.Phase != coreV1.PodRunning {
-			continue
+	timeout := int64(120)
+	startTimestamp := time.Now().Unix()
+	for {
+		podList, err := r.kubernetesClient.ListPods(namespace, listOptions)
+		if err != nil {
+			return err
 		}
 
-		if event.Type == watch.Added {
-			continue
-		}
-
-		for _, containerStatus := range pod.Status.ContainerStatuses {
-			if containerStatus.Name == r.container.Name && containerStatus.Ready {
-				return nil
+		for _, pod := range podList.Items {
+			if pod.DeletionTimestamp != nil || pod.Status.Phase != coreV1.PodRunning {
+				continue
 			}
+
+			for _, containerStatus := range pod.Status.ContainerStatuses {
+				if containerStatus.Name == r.container.Name && containerStatus.Ready {
+					return nil
+				}
+			}
+		}
+
+		time.Sleep(1 * time.Second)
+		nowTimestamp := time.Now().Unix()
+		if nowTimestamp-startTimestamp >= timeout {
+			break
 		}
 	}
 
