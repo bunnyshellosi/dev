@@ -21,13 +21,14 @@ const (
 	PrivateKeyFilename = "id_rsa"
 	PublicKeyFilename  = "id_rsa.pub"
 
-	paramForwardAgent          = "ForwardAgent"
-	paramHostName              = "HostName"
-	paramPort                  = "Port"
-	paramStrictHostKeyChecking = "StrictHostKeyChecking"
-	paramUserKnownHostsFile    = "UserKnownHostsFile"
-	paramIdentityFile          = "IdentityFile"
-	paramIdentitiesOnly        = "IdentitiesOnly"
+	paramForwardAgent           = "ForwardAgent"
+	paramHostName               = "HostName"
+	paramPort                   = "Port"
+	paramStrictHostKeyChecking  = "StrictHostKeyChecking"
+	paramUserKnownHostsFile     = "UserKnownHostsFile"
+	paramIdentityFile           = "IdentityFile"
+	paramIdentitiesOnly         = "IdentitiesOnly"
+	paramPubkeyAcceptedKeyTypes = "PubkeyAcceptedKeyTypes"
 
 	SyncthingRemoteInterface = "127.0.0.1"
 	SyncthingRemotePort      = 22000
@@ -139,6 +140,7 @@ func newSSHConfigHost(hostname, iface, port, identityFile string) (*ssh_config.H
 		bunnyshellSSH.NewKV(paramUserKnownHostsFile, "/dev/null"),
 		bunnyshellSSH.NewKV(paramIdentityFile, identityFile),
 		bunnyshellSSH.NewKV(paramIdentitiesOnly, "yes"),
+		bunnyshellSSH.NewKV(paramPubkeyAcceptedKeyTypes, "+ssh-rsa"),
 	}
 	host := &ssh_config.Host{
 		Patterns: patterns,
