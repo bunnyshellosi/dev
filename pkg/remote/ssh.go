@@ -101,7 +101,10 @@ func (r *RemoteDevelopment) ensureSSHConfigEntry() error {
 		return err
 	}
 
-	hostname := r.getSSHHostname()
+	hostname, err := r.getSSHHostname()
+	if err != nil {
+		return err
+	}
 	bunnyshellSSH.RemoveHost(config, hostname)
 	host, err := newSSHConfigHost(
 		hostname,
@@ -122,8 +125,13 @@ func (r *RemoteDevelopment) ensureSSHConfigEntry() error {
 	return bunnyshellSSH.IncludeBunnyshellConfig()
 }
 
-func (r *RemoteDevelopment) getSSHHostname() string {
-	return fmt.Sprintf("%s.%s.bunnyshell", r.deployment.GetName(), r.deployment.GetNamespace())
+func (r *RemoteDevelopment) getSSHHostname() (string, error) {
+	resource, err := r.getResource()
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%s.%s.bunnyshell", resource.GetName(), resource.GetNamespace()), nil
 }
 
 func newSSHConfigHost(hostname, iface, port, identityFile string) (*ssh_config.Host, error) {

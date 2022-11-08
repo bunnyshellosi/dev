@@ -27,8 +27,18 @@ func (r *RemoteDevelopment) ensureRemoteSSHPortForward() error {
 }
 
 func (r *RemoteDevelopment) getRemoteDevPod() (*coreV1.Pod, error) {
-	namespace := r.deployment.GetNamespace()
-	labelSelector := apiMetaV1.LabelSelector{MatchLabels: r.deployment.Spec.Selector.MatchLabels}
+	resource, err := r.getResource()
+	if err != nil {
+		return nil, err
+	}
+
+	resourceSelector, err := r.getResourceSelector()
+	if err != nil {
+		return nil, err
+	}
+
+	namespace := resource.GetNamespace()
+	labelSelector := apiMetaV1.LabelSelector{MatchLabels: resourceSelector.MatchLabels}
 	listOptions := apiMetaV1.ListOptions{
 		LabelSelector: labels.Set(labelSelector.MatchLabels).String(),
 	}
@@ -44,5 +54,5 @@ func (r *RemoteDevelopment) getRemoteDevPod() (*coreV1.Pod, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("pod not found for component %v", r.deployment.GetName())
+	return nil, fmt.Errorf("pod not found for component %v", resource.GetName())
 }

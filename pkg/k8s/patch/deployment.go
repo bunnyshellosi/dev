@@ -20,6 +20,12 @@ type DeploymentSpecPatchConfiguration struct {
 }
 
 type DeploymentStrategyPatchConfiguration struct {
-	Type          *appsV1.DeploymentStrategyType                         `json:"type,omitempty"`
+	Type *appsV1.DeploymentStrategyType `json:"type,omitempty"`
+
+	// allow "RollingUpdate: null" propagation(remove omitempty)
 	RollingUpdate *applyAppsV1.RollingUpdateDeploymentApplyConfiguration `json:"rollingUpdate"`
+}
+
+func (d *DeploymentPatchConfiguration) WithSpecTemplate(value *applyCoreV1.PodTemplateSpecApplyConfiguration) {
+	d.Spec.Template = value
 }

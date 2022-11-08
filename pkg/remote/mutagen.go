@@ -75,16 +75,24 @@ func (r *RemoteDevelopment) startMutagenSession() error {
 		return err
 	}
 
+	hostname, err := r.getSSHHostname()
+	if err != nil {
+		return err
+	}
+	sessionName, err := r.getMutagenSessionName()
+	if err != nil {
+		return err
+	}
 	mutagenArgs := []string{
 		"sync",
 		"create",
-		"-n", r.getMutagenSessionName(),
+		"-n", sessionName,
 		"--no-global-configuration",
 		"-c", mutagenConfigFilePath,
 		r.localSyncPath,
 		fmt.Sprintf(
 			"%s:%s",
-			r.getSSHHostname(),
+			hostname,
 			r.remoteSyncPath,
 		),
 	}
@@ -104,10 +112,15 @@ func (r *RemoteDevelopment) terminateMutagenSession() error {
 		return err
 	}
 
+	sessionName, err := r.getMutagenSessionName()
+	if err != nil {
+		return err
+	}
+
 	mutagenArgs := []string{
 		"sync",
 		"terminate",
-		r.getMutagenSessionName(),
+		sessionName,
 	}
 
 	mutagenCmd := exec.Command(mutagenBinPath, mutagenArgs...)
@@ -133,14 +146,24 @@ func (r *RemoteDevelopment) terminateMutagenDaemon() error {
 	return nil
 }
 
-func (r *RemoteDevelopment) getMutagenSessionName() string {
-	return fmt.Sprintf("rd-%s", r.getMutagenSessionKey()[:16])
+func (r *RemoteDevelopment) getMutagenSessionName() (string, error) {
+	sessionKey, err := r.getMutagenSessionKey()
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("rd-%s", sessionKey[:16]), nil
 }
 
-func (r *RemoteDevelopment) getMutagenSessionKey() string {
-	plaintext := fmt.Sprintf("%s-%s-%s", r.remoteSyncPath, r.deployment.GetName(), r.deployment.GetNamespace())
+func (r *RemoteDevelopment) getMutagenSessionKey() (string, error) {
+	resource, err := r.getResource()
+	if err != nil {
+		return "", err
+	}
+
+	plaintext := fmt.Sprintf("%s-%s-%s", r.remoteSyncPath, resource.GetName(), resource.GetNamespace())
 	hash := md5.Sum([]byte(plaintext))
-	return hex.EncodeToString(hash[:])
+	return hex.EncodeToString(hash[:]), nil
 }
 
 func getMutagenBinPath() (string, error) {

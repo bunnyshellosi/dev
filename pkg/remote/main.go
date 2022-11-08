@@ -25,7 +25,7 @@ func (r *RemoteDevelopment) Up() error {
 		return err
 	}
 
-	if err := r.prepareDeployment(); err != nil {
+	if err := r.prepareResource(); err != nil {
 		return err
 	}
 
@@ -50,10 +50,6 @@ func (r *RemoteDevelopment) Down() error {
 	}
 
 	if err := r.deletePVC(); err != nil {
-		return err
-	}
-
-	if err := r.deleteSecret(); err != nil {
 		return err
 	}
 

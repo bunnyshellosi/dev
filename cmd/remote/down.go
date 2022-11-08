@@ -9,8 +9,9 @@ import (
 
 func init() {
 	var (
-		namespaceName  string
-		deploymentName string
+		namespaceName   string
+		deploymentName  string
+		statefulSetName string
 	)
 
 	command := &cobra.Command{
@@ -28,8 +29,16 @@ func init() {
 
 			if deploymentName != "" {
 				remoteDevelopment.WithDeploymentName(deploymentName)
-			} else if err := remoteDevelopment.SelectDeployment(); err != nil {
-				return err
+			} else if statefulSetName != "" {
+				remoteDevelopment.WithStatefulSetName(statefulSetName)
+			} else {
+				if err := remoteDevelopment.SelectResourceType(); err != nil {
+					return err
+				}
+
+				if err := remoteDevelopment.SelectResource(); err != nil {
+					return err
+				}
 			}
 
 			return remoteDevelopment.Down()
@@ -38,6 +47,7 @@ func init() {
 
 	command.Flags().StringVarP(&namespaceName, "namespace", "n", "", "Kubernetes Namespace")
 	command.Flags().StringVarP(&deploymentName, "deployment", "d", "", "Kubernetes Deployment")
+	command.Flags().StringVarP(&statefulSetName, "statefulset", "s", "", "Kubernetes StatefulSet")
 
 	mainCmd.AddCommand(command)
 }
