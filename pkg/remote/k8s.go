@@ -51,12 +51,14 @@ const (
 	// ConfigSourceDir = "config"
 )
 
-var ErrNoResourceSelected = fmt.Errorf("no resource selected")
-
 type Resource interface {
 	GetName() string
 	GetNamespace() string
 	GetAnnotations() map[string]string
+}
+
+func (r *RemoteDevelopment) resourceTypeNotSupportedError() error {
+	return fmt.Errorf("resource type \"%s\" not supported", r.resourceType)
 }
 
 func (r *RemoteDevelopment) getResourcePatch() (patch.Resource, error) {
@@ -87,8 +89,19 @@ func (r *RemoteDevelopment) getResourcePatch() (patch.Resource, error) {
 				Replicas: &replicas,
 			},
 		}, nil
+	case DaemonSet:
+		strategy := appsV1.OnDeleteDaemonSetStrategyType
+		return &patch.DaemonSetPatchConfiguration{
+			ObjectMetaApplyConfiguration: &applyMetaV1.ObjectMetaApplyConfiguration{},
+			Spec: &patch.DaemonSetSpecPatchConfiguration{
+				UpdateStrategy: &patch.DaemonSetStrategyPatchConfiguration{
+					Type:          &strategy,
+					RollingUpdate: nil,
+				},
+			},
+		}, nil
 	default:
-		return nil, ErrNoResourceSelected
+		return nil, r.resourceTypeNotSupportedError()
 	}
 }
 
@@ -139,8 +152,10 @@ func (r *RemoteDevelopment) prepareResource() error {
 		return r.kubernetesClient.PatchDeployment(resource.GetNamespace(), resource.GetName(), data)
 	case StatefulSet:
 		return r.kubernetesClient.PatchStatefulSet(resource.GetNamespace(), resource.GetName(), data)
+	case DaemonSet:
+		return r.kubernetesClient.PatchDaemonSet(resource.GetNamespace(), resource.GetName(), data)
 	default:
-		return ErrNoResourceSelected
+		return r.resourceTypeNotSupportedError()
 	}
 }
 
@@ -172,8 +187,16 @@ func (r *RemoteDevelopment) restoreDeployment() error {
 
 		_, err = r.kubernetesClient.UpdateStatefulSet(statefulSet.GetNamespace(), statefulSet)
 		return err
+	case DaemonSet:
+		daemonSet := &appsV1.DaemonSet{}
+		if err := json.Unmarshal([]byte(snapshot), daemonSet); err != nil {
+			return err
+		}
+
+		_, err = r.kubernetesClient.UpdateDaemonSet(daemonSet.GetNamespace(), daemonSet)
+		return err
 	default:
-		return ErrNoResourceSelected
+		return r.resourceTypeNotSupportedError()
 	}
 }
 
@@ -244,6 +267,33 @@ func (r *RemoteDevelopment) getCurrentManifestSnapshot() (string, error) {
 		if err != nil {
 			return "", err
 		}
+	case DaemonSet:
+		applyResource := &appsCoreV1.DaemonSetApplyConfiguration{}
+		if err := json.Unmarshal(fullSnapshot, applyResource); err != nil {
+			return "", err
+		}
+
+		// strip unnecessary data
+		applyResource.WithStatus(nil)
+		applyResource.Generation = nil
+		applyResource.UID = nil
+		applyResource.ResourceVersion = nil
+		annotations := make(map[string]string)
+		for key, value := range applyResource.Annotations {
+			if key == MetadataK8SRevision || key == MetadataKubeCTLLastAppliedConf {
+				continue
+			}
+
+			annotations[key] = value
+		}
+		applyResource.Annotations = annotations
+
+		snapshot, err = json.Marshal(applyResource)
+		if err != nil {
+			return "", err
+		}
+	default:
+		return "", r.resourceTypeNotSupportedError()
 	}
 
 	return string(snapshot), nil
@@ -482,23 +532,16 @@ func (r *RemoteDevelopment) deletePVC() error {
 	return r.kubernetesClient.DeletePVC(resource.GetNamespace(), pvcName)
 }
 
-func (r *RemoteDevelopment) deleteSecret() error {
-	resource, err := r.getResource()
-	if err != nil {
-		return err
-	}
-
-	return r.kubernetesClient.DeleteSecret(resource.GetNamespace(), r.getSecretName())
-}
-
 func (r *RemoteDevelopment) getResourceSelector() (*apiMetaV1.LabelSelector, error) {
 	switch r.resourceType {
 	case Deployment:
 		return r.deployment.Spec.Selector, nil
 	case StatefulSet:
 		return r.statefulSet.Spec.Selector, nil
+	case DaemonSet:
+		return r.daemonSet.Spec.Selector, nil
 	default:
-		return nil, ErrNoResourceSelected
+		return nil, r.resourceTypeNotSupportedError()
 	}
 }
 
@@ -559,8 +602,10 @@ func (r *RemoteDevelopment) getResourceContainers() ([]coreV1.Container, error) 
 		return k8sTools.GetDeploymentContainers(r.deployment), nil
 	case StatefulSet:
 		return k8sTools.GetStatefulSetContainers(r.statefulSet), nil
+	case DaemonSet:
+		return k8sTools.GetDaemonSetContainers(r.daemonSet), nil
 	default:
-		return []coreV1.Container{}, ErrNoResourceSelected
+		return []coreV1.Container{}, r.resourceTypeNotSupportedError()
 	}
 }
 
@@ -570,6 +615,8 @@ func (r *RemoteDevelopment) getResourceContainer(containerName string) (*coreV1.
 		return k8sTools.GetDeploymentContainerByName(r.deployment, containerName)
 	case StatefulSet:
 		return k8sTools.GetStatefulSetContainerByName(r.statefulSet, containerName)
+	case DaemonSet:
+		return k8sTools.GetDaemonSetContainerByName(r.daemonSet, containerName)
 	default:
 		return nil, ErrNoResourceSelected
 	}

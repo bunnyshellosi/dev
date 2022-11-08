@@ -19,6 +19,7 @@ type ResourceType string
 const (
 	Deployment  ResourceType = "deployment"
 	StatefulSet ResourceType = "statefulset"
+	DaemonSet   ResourceType = "daemonset"
 )
 
 type RemoteDevelopment struct {
@@ -34,6 +35,7 @@ type RemoteDevelopment struct {
 	resourceType ResourceType
 	deployment   *appsV1.Deployment
 	statefulSet  *appsV1.StatefulSet
+	daemonSet    *appsV1.DaemonSet
 	container    *coreV1.Container
 
 	localSyncPath  string
@@ -109,7 +111,7 @@ func (r *RemoteDevelopment) WithResourceType(resourceType ResourceType) *RemoteD
 
 func (r *RemoteDevelopment) WithDeployment(deployment *appsV1.Deployment) *RemoteDevelopment {
 	if r.namespace == nil {
-		panic(fmt.Errorf("you have to select a namespace before selecting a deployment"))
+		panic(ErrNoNamespaceSelected)
 	}
 
 	if r.namespace.GetName() != deployment.GetNamespace() {
@@ -136,7 +138,7 @@ func (r *RemoteDevelopment) WithDeploymentName(deploymentName string) *RemoteDev
 
 func (r *RemoteDevelopment) WithStatefulSet(statefulSet *appsV1.StatefulSet) *RemoteDevelopment {
 	if r.namespace == nil {
-		panic(fmt.Errorf("you have to select a namespace before selecting a deployment"))
+		panic(ErrNoNamespaceSelected)
 	}
 
 	if r.namespace.GetName() != statefulSet.GetNamespace() {
@@ -159,6 +161,33 @@ func (r *RemoteDevelopment) WithStatefulSetName(name string) *RemoteDevelopment 
 	}
 
 	return r.WithStatefulSet(statefulSet)
+}
+
+func (r *RemoteDevelopment) WithDaemonSet(daemonSet *appsV1.DaemonSet) *RemoteDevelopment {
+	if r.namespace == nil {
+		panic(ErrNoNamespaceSelected)
+	}
+
+	if r.namespace.GetName() != daemonSet.GetNamespace() {
+		panic(fmt.Errorf(
+			"the daemonset's namespace(\"%s\") doesn't match the selected namespace \"%s\"",
+			daemonSet.GetNamespace(),
+			r.namespace.GetName(),
+		))
+	}
+
+	r.WithResourceType(DaemonSet)
+	r.daemonSet = daemonSet
+	return r
+}
+
+func (r *RemoteDevelopment) WithDaemonSetName(name string) *RemoteDevelopment {
+	daemonSet, err := r.kubernetesClient.GetDaemonSet(r.namespace.GetName(), name)
+	if err != nil {
+		panic(err)
+	}
+
+	return r.WithDaemonSet(daemonSet)
 }
 
 func (r *RemoteDevelopment) WithContainer(container *coreV1.Container) *RemoteDevelopment {
@@ -185,7 +214,9 @@ func (r *RemoteDevelopment) getResource() (Resource, error) {
 		return r.deployment, nil
 	case StatefulSet:
 		return r.statefulSet, nil
+	case DaemonSet:
+		return r.daemonSet, nil
 	default:
-		return nil, fmt.Errorf("unknown resource type: \"%s\"", r.resourceType)
+		return nil, r.resourceTypeNotSupportedError()
 	}
 }

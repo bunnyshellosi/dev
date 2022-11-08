@@ -108,6 +108,10 @@ func (k *KubernetesClient) UpdateStatefulSet(namespace string, statefulSet *apps
 	return k.clientSet.AppsV1().StatefulSets(namespace).Update(context.TODO(), statefulSet, apiMetaV1.UpdateOptions{})
 }
 
+func (k *KubernetesClient) UpdateDaemonSet(namespace string, daemonSet *appsV1.DaemonSet) (*appsV1.DaemonSet, error) {
+	return k.clientSet.AppsV1().DaemonSets(namespace).Update(context.TODO(), daemonSet, apiMetaV1.UpdateOptions{})
+}
+
 func (k *KubernetesClient) ListNamespaces() (*coreV1.NamespaceList, error) {
 	return k.clientSet.CoreV1().Namespaces().List(context.TODO(), apiMetaV1.ListOptions{})
 }
@@ -118,6 +122,10 @@ func (k *KubernetesClient) ListDeployments(namespace string) (*appsV1.Deployment
 
 func (k *KubernetesClient) ListStatefulSets(namespace string) (*appsV1.StatefulSetList, error) {
 	return k.clientSet.AppsV1().StatefulSets(namespace).List(context.TODO(), apiMetaV1.ListOptions{})
+}
+
+func (k *KubernetesClient) ListDaemonSets(namespace string) (*appsV1.DaemonSetList, error) {
+	return k.clientSet.AppsV1().DaemonSets(namespace).List(context.TODO(), apiMetaV1.ListOptions{})
 }
 
 func (k *KubernetesClient) DeletePVC(namespace, name string) error {
@@ -138,6 +146,10 @@ func (k *KubernetesClient) GetDeployment(namespace, deploymentName string) (*app
 
 func (k *KubernetesClient) GetStatefulSet(namespace, name string) (*appsV1.StatefulSet, error) {
 	return k.clientSet.AppsV1().StatefulSets(namespace).Get(context.TODO(), name, apiMetaV1.GetOptions{})
+}
+
+func (k *KubernetesClient) GetDaemonSet(namespace, name string) (*appsV1.DaemonSet, error) {
+	return k.clientSet.AppsV1().DaemonSets(namespace).Get(context.TODO(), name, apiMetaV1.GetOptions{})
 }
 
 func (k *KubernetesClient) ApplySecret(secret *applyCoreV1.SecretApplyConfiguration) error {
@@ -163,6 +175,11 @@ func (k *KubernetesClient) PatchDeployment(namespace, name string, data []byte) 
 
 func (k *KubernetesClient) PatchStatefulSet(namespace, name string, data []byte) error {
 	_, err := k.clientSet.AppsV1().StatefulSets(namespace).Patch(context.TODO(), name, types.StrategicMergePatchType, data, apiMetaV1.PatchOptions{})
+	return err
+}
+
+func (k *KubernetesClient) PatchDaemonSet(namespace, name string, data []byte) error {
+	_, err := k.clientSet.AppsV1().DaemonSets(namespace).Patch(context.TODO(), name, types.StrategicMergePatchType, data, apiMetaV1.PatchOptions{})
 	return err
 }
 

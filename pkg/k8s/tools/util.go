@@ -34,3 +34,12 @@ func GetStatefulSetContainerByName(statefulSet *appsV1.StatefulSet, containerNam
 	containers := GetStatefulSetContainers(statefulSet)
 	return FilterContainerByName(containers, containerName)
 }
+
+func GetDaemonSetContainers(daemonSet *appsV1.DaemonSet) []coreV1.Container {
+	return daemonSet.Spec.Template.Spec.Containers
+}
+
+func GetDaemonSetContainerByName(daemonSet *appsV1.DaemonSet, containerName string) (*coreV1.Container, error) {
+	containers := GetDaemonSetContainers(daemonSet)
+	return FilterContainerByName(containers, containerName)
+}

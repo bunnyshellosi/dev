@@ -12,6 +12,7 @@ func init() {
 		namespaceName   string
 		deploymentName  string
 		statefulSetName string
+		daemonSetName   string
 		containerName   string
 
 		localSyncPath  string
@@ -35,6 +36,8 @@ func init() {
 				remoteDevelopment.WithDeploymentName(deploymentName)
 			} else if statefulSetName != "" {
 				remoteDevelopment.WithStatefulSetName(statefulSetName)
+			} else if daemonSetName != "" {
+				remoteDevelopment.WithDaemonSetName(daemonSetName)
 			} else {
 				if err := remoteDevelopment.SelectResourceType(); err != nil {
 					return err
@@ -80,6 +83,7 @@ func init() {
 	command.Flags().StringVarP(&namespaceName, "namespace", "n", "", "Kubernetes Namespace")
 	command.Flags().StringVarP(&deploymentName, "deployment", "d", "", "Kubernetes Deployment")
 	command.Flags().StringVarP(&statefulSetName, "statefulset", "s", "", "Kubernetes StatefulSet")
+	command.Flags().StringVar(&daemonSetName, "daemonset", "", "Kubernetes DaemonSet")
 	command.Flags().StringVar(&containerName, "container", "", "Kubernetes Container")
 	command.Flags().StringVarP(&localSyncPath, "local-sync-path", "l", "", "Local folder path to sync")
 	command.Flags().StringVarP(&remoteSyncPath, "remote-sync-path", "r", "", "Remote folder path to sync")
