@@ -8,11 +8,13 @@ import (
 )
 
 var (
-	ErrNoNamespaces  = fmt.Errorf("no namespaces available")
-	ErrNoDeployments = fmt.Errorf("no namespaces available")
+	ErrNoNamespaces   = fmt.Errorf("no namespaces available")
+	ErrNoDeployments  = fmt.Errorf("no deployments available")
+	ErrNoStatefulSets = fmt.Errorf("no statefulsets available")
+	ErrNoDaemonSets   = fmt.Errorf("no daemonset available")
 
-	ErrNoNamespaceSelected  = fmt.Errorf("no namespace selected")
-	ErrNoDeploymentSelected = fmt.Errorf("no deployment selected")
+	ErrNoNamespaceSelected = fmt.Errorf("no namespace selected")
+	ErrNoResourceSelected  = fmt.Errorf("no resource selected")
 )
 
 func (r *RemoteDevelopment) SelectNamespace() error {
@@ -52,6 +54,36 @@ func (r *RemoteDevelopment) SelectNamespace() error {
 	return nil
 }
 
+func (r *RemoteDevelopment) SelectResourceType() error {
+	resourceTypeMap := map[string]ResourceType{
+		string(Deployment):  Deployment,
+		string(StatefulSet): StatefulSet,
+		string(DaemonSet):   DaemonSet,
+	}
+
+	items := []string{string(Deployment), string(StatefulSet), string(DaemonSet)}
+	resourceType, err := util.Select("Select resource type", items)
+	if err != nil {
+		return err
+	}
+
+	r.WithResourceType(resourceTypeMap[resourceType])
+	return nil
+}
+
+func (r *RemoteDevelopment) SelectResource() error {
+	switch r.resourceType {
+	case Deployment:
+		return r.SelectDeployment()
+	case StatefulSet:
+		return r.SelectStatefulSet()
+	case DaemonSet:
+		return r.SelectDaemonSet()
+	}
+
+	return nil
+}
+
 func (r *RemoteDevelopment) SelectDeployment() error {
 	if r.namespace == nil {
 		return ErrNoNamespaceSelected
@@ -64,11 +96,6 @@ func (r *RemoteDevelopment) SelectDeployment() error {
 
 	if len(deployments.Items) == 0 {
 		return ErrNoDeployments
-	}
-
-	if len(deployments.Items) == 1 {
-		r.deployment = deployments.Items[0].DeepCopy()
-		return nil
 	}
 
 	items := []string{}
@@ -93,14 +120,85 @@ func (r *RemoteDevelopment) SelectDeployment() error {
 	return nil
 }
 
-func (r *RemoteDevelopment) SelectContainer() error {
-	if r.deployment == nil {
-		return ErrNoDeploymentSelected
+func (r *RemoteDevelopment) SelectStatefulSet() error {
+	if r.namespace == nil {
+		return ErrNoNamespaceSelected
 	}
 
-	podContainers := r.deployment.Spec.Template.Spec.Containers
+	statefulSets, err := r.kubernetesClient.ListStatefulSets(r.namespace.GetName())
+	if err != nil {
+		return err
+	}
+
+	if len(statefulSets.Items) == 0 {
+		return ErrNoStatefulSets
+	}
+
+	items := []string{}
+	for _, item := range statefulSets.Items {
+		items = append(items, item.GetName())
+	}
+
+	statefulSet, err := util.Select("Select statefulset", items)
+	if err != nil {
+		return err
+	}
+
+	for _, item := range statefulSets.Items {
+		if item.GetName() != statefulSet {
+			continue
+		}
+
+		r.WithStatefulSet(item.DeepCopy())
+		return nil
+	}
+
+	return nil
+}
+
+func (r *RemoteDevelopment) SelectDaemonSet() error {
+	if r.namespace == nil {
+		return ErrNoNamespaceSelected
+	}
+
+	daemonSets, err := r.kubernetesClient.ListDaemonSets(r.namespace.GetName())
+	if err != nil {
+		return err
+	}
+
+	if len(daemonSets.Items) == 0 {
+		return ErrNoDaemonSets
+	}
+
+	items := []string{}
+	for _, item := range daemonSets.Items {
+		items = append(items, item.GetName())
+	}
+
+	daemonSet, err := util.Select("Select daemonset", items)
+	if err != nil {
+		return err
+	}
+
+	for _, item := range daemonSets.Items {
+		if item.GetName() != daemonSet {
+			continue
+		}
+
+		r.WithDaemonSet(item.DeepCopy())
+		return nil
+	}
+
+	return nil
+}
+
+func (r *RemoteDevelopment) SelectContainer() error {
+	podContainers, err := r.getResourceContainers()
+	if err != nil {
+		return err
+	}
 	if len(podContainers) == 1 {
-		r.container = podContainers[0].DeepCopy()
+		r.WithContainer(podContainers[0].DeepCopy())
 		return nil
 	}
 

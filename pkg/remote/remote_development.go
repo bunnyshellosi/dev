@@ -5,13 +5,21 @@ import (
 	"time"
 
 	"bunnyshell.com/dev/pkg/k8s"
-	k8sTools "bunnyshell.com/dev/pkg/k8s/tools"
 	"bunnyshell.com/dev/pkg/util"
 
 	"github.com/briandowns/spinner"
 	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/portforward"
+)
+
+// +enum
+type ResourceType string
+
+const (
+	Deployment  ResourceType = "deployment"
+	StatefulSet ResourceType = "statefulset"
+	DaemonSet   ResourceType = "daemonset"
 )
 
 type RemoteDevelopment struct {
@@ -23,9 +31,12 @@ type RemoteDevelopment struct {
 	kubernetesClient   *k8s.KubernetesClient
 	remoteSSHForwarder *portforward.PortForwarder
 
-	namespace  *coreV1.Namespace
-	deployment *appsV1.Deployment
-	container  *coreV1.Container
+	namespace    *coreV1.Namespace
+	resourceType ResourceType
+	deployment   *appsV1.Deployment
+	statefulSet  *appsV1.StatefulSet
+	daemonSet    *appsV1.DaemonSet
+	container    *coreV1.Container
 
 	localSyncPath  string
 	remoteSyncPath string
@@ -93,9 +104,14 @@ func (r *RemoteDevelopment) WithNamespaceFromKubeConfig() *RemoteDevelopment {
 	return r.WithNamespaceName(namespace)
 }
 
+func (r *RemoteDevelopment) WithResourceType(resourceType ResourceType) *RemoteDevelopment {
+	r.resourceType = resourceType
+	return r
+}
+
 func (r *RemoteDevelopment) WithDeployment(deployment *appsV1.Deployment) *RemoteDevelopment {
 	if r.namespace == nil {
-		panic(fmt.Errorf("you have to select a namespace before selecting a deployment"))
+		panic(ErrNoNamespaceSelected)
 	}
 
 	if r.namespace.GetName() != deployment.GetNamespace() {
@@ -106,6 +122,7 @@ func (r *RemoteDevelopment) WithDeployment(deployment *appsV1.Deployment) *Remot
 		))
 	}
 
+	r.WithResourceType(Deployment)
 	r.deployment = deployment
 	return r
 }
@@ -119,18 +136,63 @@ func (r *RemoteDevelopment) WithDeploymentName(deploymentName string) *RemoteDev
 	return r.WithDeployment(deployment)
 }
 
-func (r *RemoteDevelopment) WithContainer(container *coreV1.Container) *RemoteDevelopment {
-	if r.deployment == nil {
-		panic(fmt.Errorf("please select a deployment first"))
+func (r *RemoteDevelopment) WithStatefulSet(statefulSet *appsV1.StatefulSet) *RemoteDevelopment {
+	if r.namespace == nil {
+		panic(ErrNoNamespaceSelected)
 	}
 
-	deploymentContainer := k8sTools.GetDeploymentContainerByName(r.deployment, container.Name)
-	if deploymentContainer == nil {
+	if r.namespace.GetName() != statefulSet.GetNamespace() {
 		panic(fmt.Errorf(
-			"the deployment \"%s\" has no container named \"%s\"",
-			r.deployment.GetName(),
-			container.Name,
+			"the statefulset's namespace(\"%s\") doesn't match the selected namespace \"%s\"",
+			statefulSet.GetNamespace(),
+			r.namespace.GetName(),
 		))
+	}
+
+	r.WithResourceType(StatefulSet)
+	r.statefulSet = statefulSet
+	return r
+}
+
+func (r *RemoteDevelopment) WithStatefulSetName(name string) *RemoteDevelopment {
+	statefulSet, err := r.kubernetesClient.GetStatefulSet(r.namespace.GetName(), name)
+	if err != nil {
+		panic(err)
+	}
+
+	return r.WithStatefulSet(statefulSet)
+}
+
+func (r *RemoteDevelopment) WithDaemonSet(daemonSet *appsV1.DaemonSet) *RemoteDevelopment {
+	if r.namespace == nil {
+		panic(ErrNoNamespaceSelected)
+	}
+
+	if r.namespace.GetName() != daemonSet.GetNamespace() {
+		panic(fmt.Errorf(
+			"the daemonset's namespace(\"%s\") doesn't match the selected namespace \"%s\"",
+			daemonSet.GetNamespace(),
+			r.namespace.GetName(),
+		))
+	}
+
+	r.WithResourceType(DaemonSet)
+	r.daemonSet = daemonSet
+	return r
+}
+
+func (r *RemoteDevelopment) WithDaemonSetName(name string) *RemoteDevelopment {
+	daemonSet, err := r.kubernetesClient.GetDaemonSet(r.namespace.GetName(), name)
+	if err != nil {
+		panic(err)
+	}
+
+	return r.WithDaemonSet(daemonSet)
+}
+
+func (r *RemoteDevelopment) WithContainer(container *coreV1.Container) *RemoteDevelopment {
+	if r.resourceType == "" {
+		panic(fmt.Errorf("please select a resource first"))
 	}
 
 	r.container = container
@@ -138,10 +200,23 @@ func (r *RemoteDevelopment) WithContainer(container *coreV1.Container) *RemoteDe
 }
 
 func (r *RemoteDevelopment) WithContainerName(containerName string) *RemoteDevelopment {
-	container := k8sTools.GetDeploymentContainerByName(r.deployment, containerName)
-	if container == nil {
-		panic(fmt.Errorf("container \"%s\" not found", container.Name))
+	container, err := r.getResourceContainer(containerName)
+	if err != nil {
+		panic(err)
 	}
 
 	return r.WithContainer(container)
+}
+
+func (r *RemoteDevelopment) getResource() (Resource, error) {
+	switch r.resourceType {
+	case Deployment:
+		return r.deployment, nil
+	case StatefulSet:
+		return r.statefulSet, nil
+	case DaemonSet:
+		return r.daemonSet, nil
+	default:
+		return nil, r.resourceTypeNotSupportedError()
+	}
 }

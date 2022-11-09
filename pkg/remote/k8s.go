@@ -13,6 +13,7 @@ import (
 	"bunnyshell.com/dev/pkg/build"
 	"bunnyshell.com/dev/pkg/k8s/patch"
 
+	k8sTools "bunnyshell.com/dev/pkg/k8s/tools"
 	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -39,7 +40,7 @@ const (
 	VolumeNameWork     = "remote-dev-work"
 
 	SecretName    = "remote-development"
-	PVCNameFormat = "%s-remote-dev"
+	PVCNameFormat = "%s-%s-remote-dev"
 
 	SecretAuthorizedKeysKeyName = "authorized_keys"
 	SecretAuthorizedKeysPath    = "ssh/authorized_keys"
@@ -50,24 +51,75 @@ const (
 	// ConfigSourceDir = "config"
 )
 
-func (r *RemoteDevelopment) prepareDeployment() error {
+type Resource interface {
+	GetName() string
+	GetNamespace() string
+	GetAnnotations() map[string]string
+}
+
+func (r *RemoteDevelopment) resourceTypeNotSupportedError() error {
+	return fmt.Errorf("resource type \"%s\" not supported", r.resourceType)
+}
+
+func (r *RemoteDevelopment) getResourcePatch() (patch.Resource, error) {
+	switch r.resourceType {
+	case Deployment:
+		var replicas int32 = 1
+		strategy := appsV1.RecreateDeploymentStrategyType
+		return &patch.DeploymentPatchConfiguration{
+			ObjectMetaApplyConfiguration: &applyMetaV1.ObjectMetaApplyConfiguration{},
+			Spec: &patch.DeploymentSpecPatchConfiguration{
+				Strategy: &patch.DeploymentStrategyPatchConfiguration{
+					Type:          &strategy,
+					RollingUpdate: nil,
+				},
+				Replicas: &replicas,
+			},
+		}, nil
+	case StatefulSet:
+		var replicas int32 = 1
+		strategy := appsV1.OnDeleteStatefulSetStrategyType
+		return &patch.StatefulSetPatchConfiguration{
+			ObjectMetaApplyConfiguration: &applyMetaV1.ObjectMetaApplyConfiguration{},
+			Spec: &patch.StatefulSetSpecPatchConfiguration{
+				UpdateStrategy: &patch.StatefulSetStrategyPatchConfiguration{
+					Type:          &strategy,
+					RollingUpdate: nil,
+				},
+				Replicas: &replicas,
+			},
+		}, nil
+	case DaemonSet:
+		strategy := appsV1.OnDeleteDaemonSetStrategyType
+		return &patch.DaemonSetPatchConfiguration{
+			ObjectMetaApplyConfiguration: &applyMetaV1.ObjectMetaApplyConfiguration{},
+			Spec: &patch.DaemonSetSpecPatchConfiguration{
+				UpdateStrategy: &patch.DaemonSetStrategyPatchConfiguration{
+					Type:          &strategy,
+					RollingUpdate: nil,
+				},
+			},
+		}, nil
+	default:
+		return nil, r.resourceTypeNotSupportedError()
+	}
+}
+
+func (r *RemoteDevelopment) prepareResource() error {
 	r.StartSpinner(" Setup k8s pod for remote development")
 	defer r.StopSpinner()
 
-	strategy := appsV1.RecreateDeploymentStrategyType
-	var replicas int32 = 1
-	deploymentPatch := &patch.DeploymentPatchConfiguration{
-		ObjectMetaApplyConfiguration: &applyMetaV1.ObjectMetaApplyConfiguration{},
-		Spec: &patch.DeploymentSpecPatchConfiguration{
-			Strategy: &patch.DeploymentStrategyPatchConfiguration{
-				Type:          &strategy,
-				RollingUpdate: nil,
-			},
-			Replicas: &replicas,
-		},
+	currentManifestSnapshot, err := r.getCurrentManifestSnapshot()
+	if err != nil {
+		return err
 	}
 
-	currentManifestSnapshot, err := r.getCurrentManifestSnapshot()
+	resource, err := r.getResource()
+	if err != nil {
+		return err
+	}
+
+	resourcePatch, err := r.getResourcePatch()
 	if err != nil {
 		return err
 	}
@@ -75,73 +127,173 @@ func (r *RemoteDevelopment) prepareDeployment() error {
 	annotations := make(map[string]string)
 	annotations[MetadataStartedAt] = strconv.FormatInt(r.startedAt, 10)
 	annotations[MetadataContainer] = r.container.Name
-	_, ok := r.deployment.Annotations[MetadataRollback]
+	_, ok := resource.GetAnnotations()[MetadataRollback]
 	if !ok {
 		annotations[MetadataRollback] = string(currentManifestSnapshot)
 	}
 	labels := make(map[string]string)
 	labels[MetadataActive] = "true"
 
-	deploymentPatch.WithAnnotations(annotations).WithLabels(labels)
+	resourcePatch.WithAnnotations(annotations).WithLabels(labels)
 
-	r.preparePodTemplateSpec(deploymentPatch)
+	podTemplateSpec := applyCoreV1.PodTemplateSpec()
+	if err := r.preparePodTemplateSpec(podTemplateSpec); err != nil {
+		return err
+	}
+	resourcePatch.WithSpecTemplate(podTemplateSpec)
 
-	data, err := json.Marshal(deploymentPatch)
+	data, err := json.Marshal(resourcePatch)
 	if err != nil {
 		return err
 	}
 
-	return r.kubernetesClient.PatchDeployment(r.deployment.GetNamespace(), r.deployment.GetName(), data)
+	switch r.resourceType {
+	case Deployment:
+		return r.kubernetesClient.PatchDeployment(resource.GetNamespace(), resource.GetName(), data)
+	case StatefulSet:
+		return r.kubernetesClient.PatchStatefulSet(resource.GetNamespace(), resource.GetName(), data)
+	case DaemonSet:
+		return r.kubernetesClient.PatchDaemonSet(resource.GetNamespace(), resource.GetName(), data)
+	default:
+		return r.resourceTypeNotSupportedError()
+	}
 }
 
 func (r *RemoteDevelopment) restoreDeployment() error {
-	snapshot, ok := r.deployment.Annotations[MetadataRollback]
+	resource, err := r.getResource()
+	if err != nil {
+		return err
+	}
+
+	snapshot, ok := resource.GetAnnotations()[MetadataRollback]
 	if !ok {
 		return fmt.Errorf("no rollback manifest available")
 	}
 
-	deployment := &appsV1.Deployment{}
-	if err := json.Unmarshal([]byte(snapshot), deployment); err != nil {
+	switch r.resourceType {
+	case Deployment:
+		deployment := &appsV1.Deployment{}
+		if err := json.Unmarshal([]byte(snapshot), deployment); err != nil {
+			return err
+		}
+
+		_, err = r.kubernetesClient.UpdateDeployment(deployment.GetNamespace(), deployment)
 		return err
+	case StatefulSet:
+		statefulSet := &appsV1.StatefulSet{}
+		if err := json.Unmarshal([]byte(snapshot), statefulSet); err != nil {
+			return err
+		}
+
+		_, err = r.kubernetesClient.UpdateStatefulSet(statefulSet.GetNamespace(), statefulSet)
+		return err
+	case DaemonSet:
+		daemonSet := &appsV1.DaemonSet{}
+		if err := json.Unmarshal([]byte(snapshot), daemonSet); err != nil {
+			return err
+		}
+
+		_, err = r.kubernetesClient.UpdateDaemonSet(daemonSet.GetNamespace(), daemonSet)
+		return err
+	default:
+		return r.resourceTypeNotSupportedError()
+	}
+}
+
+func (r *RemoteDevelopment) getResourceManifest() ([]byte, error) {
+	resource, err := r.getResource()
+	if err != nil {
+		return nil, err
 	}
 
-	_, err := r.kubernetesClient.UpdateDeployment(deployment.GetNamespace(), deployment)
-	return err
+	return json.Marshal(resource)
 }
 
 func (r *RemoteDevelopment) getCurrentManifestSnapshot() (string, error) {
-	// if snapshot, ok := r.Deployment.Annotations[MetadataKubeCTLLastAppliedConf]; ok {
-	// 	return snapshot
-	// }
-
-	fullSnapshot, err := json.Marshal(r.deployment)
+	fullSnapshot, err := r.getResourceManifest()
 	if err != nil {
 		return "", err
 	}
 
-	applyDeployment := &appsCoreV1.DeploymentApplyConfiguration{}
-	if err := json.Unmarshal(fullSnapshot, applyDeployment); err != nil {
-		return "", err
-	}
-
-	// strip unnecessary data
-	applyDeployment.WithStatus(nil)
-	applyDeployment.Generation = nil
-	applyDeployment.UID = nil
-	applyDeployment.ResourceVersion = nil
-	annotations := make(map[string]string)
-	for key, value := range applyDeployment.Annotations {
-		if key == MetadataK8SRevision || key == MetadataKubeCTLLastAppliedConf {
-			continue
+	var snapshot []byte
+	switch r.resourceType {
+	case Deployment:
+		applyResource := &appsCoreV1.DeploymentApplyConfiguration{}
+		if err := json.Unmarshal(fullSnapshot, applyResource); err != nil {
+			return "", err
 		}
 
-		annotations[key] = value
-	}
-	applyDeployment.Annotations = annotations
+		// strip unnecessary data
+		applyResource.WithStatus(nil)
+		applyResource.Generation = nil
+		applyResource.UID = nil
+		applyResource.ResourceVersion = nil
+		annotations := make(map[string]string)
+		for key, value := range applyResource.Annotations {
+			if key == MetadataK8SRevision || key == MetadataKubeCTLLastAppliedConf {
+				continue
+			}
 
-	snapshot, err := json.Marshal(applyDeployment)
-	if err != nil {
-		return "", err
+			annotations[key] = value
+		}
+		applyResource.Annotations = annotations
+
+		snapshot, err = json.Marshal(applyResource)
+		if err != nil {
+			return "", err
+		}
+	case StatefulSet:
+		applyResource := &appsCoreV1.StatefulSetApplyConfiguration{}
+		if err := json.Unmarshal(fullSnapshot, applyResource); err != nil {
+			return "", err
+		}
+
+		// strip unnecessary data
+		applyResource.WithStatus(nil)
+		applyResource.Generation = nil
+		applyResource.UID = nil
+		applyResource.ResourceVersion = nil
+		annotations := make(map[string]string)
+		for key, value := range applyResource.Annotations {
+			if key == MetadataK8SRevision || key == MetadataKubeCTLLastAppliedConf {
+				continue
+			}
+
+			annotations[key] = value
+		}
+		applyResource.Annotations = annotations
+
+		snapshot, err = json.Marshal(applyResource)
+		if err != nil {
+			return "", err
+		}
+	case DaemonSet:
+		applyResource := &appsCoreV1.DaemonSetApplyConfiguration{}
+		if err := json.Unmarshal(fullSnapshot, applyResource); err != nil {
+			return "", err
+		}
+
+		// strip unnecessary data
+		applyResource.WithStatus(nil)
+		applyResource.Generation = nil
+		applyResource.UID = nil
+		applyResource.ResourceVersion = nil
+		annotations := make(map[string]string)
+		for key, value := range applyResource.Annotations {
+			if key == MetadataK8SRevision || key == MetadataKubeCTLLastAppliedConf {
+				continue
+			}
+
+			annotations[key] = value
+		}
+		applyResource.Annotations = annotations
+
+		snapshot, err = json.Marshal(applyResource)
+		if err != nil {
+			return "", err
+		}
+	default:
+		return "", r.resourceTypeNotSupportedError()
 	}
 
 	return string(snapshot), nil
@@ -155,7 +307,17 @@ func (r *RemoteDevelopment) ensurePVC() error {
 		coreV1.ResourceStorage: resource.MustParse("2Gi"),
 	}
 
-	remoteDevPVC := applyCoreV1.PersistentVolumeClaim(r.getPVCName(), r.deployment.GetNamespace()).
+	resource, err := r.getResource()
+	if err != nil {
+		return err
+	}
+
+	pvcName, err := r.getPVCName()
+	if err != nil {
+		return err
+	}
+
+	remoteDevPVC := applyCoreV1.PersistentVolumeClaim(pvcName, resource.GetNamespace()).
 		WithLabels(labels).
 		WithSpec(applyCoreV1.PersistentVolumeClaimSpec().
 			WithAccessModes(coreV1.ReadWriteOnce).
@@ -165,29 +327,46 @@ func (r *RemoteDevelopment) ensurePVC() error {
 	return r.kubernetesClient.ApplyPVC(remoteDevPVC)
 }
 
-func (r *RemoteDevelopment) preparePodTemplateSpec(deploymentPatch *patch.DeploymentPatchConfiguration) {
+func (r *RemoteDevelopment) preparePodTemplateSpec(podTemplateSpec *applyCoreV1.PodTemplateSpecApplyConfiguration) error {
+	resource, err := r.getResource()
+	if err != nil {
+		return err
+	}
+
 	podAnnotations := make(map[string]string)
 	podAnnotations[MetadataStartedAt] = strconv.FormatInt(r.startedAt, 10)
 	podAnnotations[MetadataContainer] = r.container.Name
 	podLabels := make(map[string]string)
 	podLabels[MetadataActive] = "true"
-	podLabels[MetadataService] = r.deployment.GetName()
+	podLabels[MetadataService] = resource.GetName()
 
-	deploymentPatch.Spec.Template = applyCoreV1.PodTemplateSpec().
+	podTemplateSpec.
 		WithAnnotations(podAnnotations).
 		WithLabels(podLabels)
 
-	r.preparePodSpec(deploymentPatch)
+	return r.preparePodSpec(podTemplateSpec)
 }
 
-func (r *RemoteDevelopment) preparePodSpec(deploymentPatch *patch.DeploymentPatchConfiguration) {
-	deploymentPatch.Spec.Template.WithSpec(applyCoreV1.PodSpec())
-	r.prepareVolumes(deploymentPatch)
-	r.prepareInitContainers(deploymentPatch)
-	r.prepareContainer(deploymentPatch)
+func (r *RemoteDevelopment) preparePodSpec(podTemplateSpec *applyCoreV1.PodTemplateSpecApplyConfiguration) error {
+	podSpec := applyCoreV1.PodSpec()
+	if err := r.prepareVolumes(podSpec); err != nil {
+		return err
+	}
+
+	if err := r.prepareInitContainers(podSpec); err != nil {
+		return err
+	}
+
+	if err := r.prepareContainer(podSpec); err != nil {
+		return err
+	}
+
+	podTemplateSpec.WithSpec(podSpec)
+
+	return nil
 }
 
-func (r *RemoteDevelopment) prepareVolumes(deploymentPatch *patch.DeploymentPatchConfiguration) {
+func (r *RemoteDevelopment) prepareVolumes(podSpec *applyCoreV1.PodSpecApplyConfiguration) error {
 	volumes := []*applyCoreV1.VolumeApplyConfiguration{}
 
 	binVolume := applyCoreV1.Volume().WithName(VolumeNameBinaries).WithEmptyDir(applyCoreV1.EmptyDirVolumeSource())
@@ -202,16 +381,22 @@ func (r *RemoteDevelopment) prepareVolumes(deploymentPatch *patch.DeploymentPatc
 				WithPath(SecretAuthorizedKeysPath)))
 	volumes = append(volumes, configVolume)
 
+	pvcName, err := r.getPVCName()
+	if err != nil {
+		return err
+	}
 	workVolume := applyCoreV1.Volume().
 		WithName(VolumeNameWork).
 		WithPersistentVolumeClaim(applyCoreV1.PersistentVolumeClaimVolumeSource().
-			WithClaimName(r.getPVCName()))
+			WithClaimName(pvcName))
 	volumes = append(volumes, workVolume)
 
-	deploymentPatch.Spec.Template.Spec.WithVolumes(volumes...)
+	podSpec.WithVolumes(volumes...)
+
+	return nil
 }
 
-func (r *RemoteDevelopment) prepareInitContainers(deploymentPatch *patch.DeploymentPatchConfiguration) {
+func (r *RemoteDevelopment) prepareInitContainers(podSpec *applyCoreV1.PodSpecApplyConfiguration) error {
 	pullPolicy := coreV1.PullIfNotPresent
 	image := r.getSSHServerImage()
 	if strings.Contains(image, ":latest") {
@@ -245,7 +430,9 @@ func (r *RemoteDevelopment) prepareInitContainers(deploymentPatch *patch.Deploym
 			WithMountPath(workVolumeMountPath).
 			WithSubPath(appSourceDir))
 
-	deploymentPatch.Spec.Template.Spec.WithInitContainers(binariesInitContainer, workInitContainer)
+	podSpec.WithInitContainers(binariesInitContainer, workInitContainer)
+
+	return nil
 }
 
 func (r *RemoteDevelopment) getSSHServerImage() string {
@@ -257,7 +444,7 @@ func (r *RemoteDevelopment) getRemoteSyncPathHash() string {
 	return hex.EncodeToString(hash[:])
 }
 
-func (r *RemoteDevelopment) prepareContainer(deploymentPatch *patch.DeploymentPatchConfiguration) {
+func (r *RemoteDevelopment) prepareContainer(podSpec *applyCoreV1.PodSpecApplyConfiguration) error {
 	basePath := "/opt/bunnyshell"
 	binariesVolumeMountPath := basePath + "/bin"
 	secretsVolumeMountPath := basePath + "/secret"
@@ -287,15 +474,22 @@ func (r *RemoteDevelopment) prepareContainer(deploymentPatch *patch.DeploymentPa
 		WithCommand(startCommand).
 		WithVolumeMounts(volumeMounts...)
 
-	deploymentPatch.Spec.Template.Spec.WithContainers(container)
+	podSpec.WithContainers(container)
+
+	return nil
 }
 
 func (r *RemoteDevelopment) getSecretName() string {
 	return SecretName
 }
 
-func (r *RemoteDevelopment) getPVCName() string {
-	return fmt.Sprintf(PVCNameFormat, r.deployment.GetName())
+func (r *RemoteDevelopment) getPVCName() (string, error) {
+	resource, err := r.getResource()
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf(PVCNameFormat, r.resourceType, resource.GetName()), nil
 }
 
 func (r *RemoteDevelopment) ensureSecret() error {
@@ -307,11 +501,16 @@ func (r *RemoteDevelopment) ensureSecret() error {
 		return err
 	}
 
-	namespace := r.deployment.GetNamespace()
+	resource, err := r.getResource()
+	if err != nil {
+		return err
+	}
+
+	namespace := resource.GetNamespace()
 
 	labels := make(map[string]string)
 	labels[MetadataActive] = "true"
-	labels[MetadataService] = r.deployment.GetName()
+	labels[MetadataService] = resource.GetName()
 
 	secretData := make(map[string][]byte)
 	secretData[SecretAuthorizedKeysKeyName] = sshPublicKeyData
@@ -321,19 +520,47 @@ func (r *RemoteDevelopment) ensureSecret() error {
 }
 
 func (r *RemoteDevelopment) deletePVC() error {
-	return r.kubernetesClient.DeletePVC(r.deployment.GetNamespace(), r.getPVCName())
+	resource, err := r.getResource()
+	if err != nil {
+		return err
+	}
+
+	pvcName, err := r.getPVCName()
+	if err != nil {
+		return err
+	}
+	return r.kubernetesClient.DeletePVC(resource.GetNamespace(), pvcName)
 }
 
-func (r *RemoteDevelopment) deleteSecret() error {
-	return r.kubernetesClient.DeleteSecret(r.deployment.GetNamespace(), r.getSecretName())
+func (r *RemoteDevelopment) getResourceSelector() (*apiMetaV1.LabelSelector, error) {
+	switch r.resourceType {
+	case Deployment:
+		return r.deployment.Spec.Selector, nil
+	case StatefulSet:
+		return r.statefulSet.Spec.Selector, nil
+	case DaemonSet:
+		return r.daemonSet.Spec.Selector, nil
+	default:
+		return nil, r.resourceTypeNotSupportedError()
+	}
 }
 
 func (r *RemoteDevelopment) waitPodReady() error {
 	r.StartSpinner(" Waiting for pod to be ready")
 	defer r.StopSpinner()
 
-	namespace := r.deployment.GetNamespace()
-	labelSelector := apiMetaV1.LabelSelector{MatchLabels: r.deployment.Spec.Selector.MatchLabels}
+	resource, err := r.getResource()
+	if err != nil {
+		return err
+	}
+
+	resourceSelector, err := r.getResourceSelector()
+	if err != nil {
+		return err
+	}
+
+	namespace := resource.GetNamespace()
+	labelSelector := apiMetaV1.LabelSelector{MatchLabels: resourceSelector.MatchLabels}
 	listOptions := apiMetaV1.ListOptions{
 		LabelSelector: labels.Set(labelSelector.MatchLabels).String(),
 	}
@@ -367,4 +594,30 @@ func (r *RemoteDevelopment) waitPodReady() error {
 
 	// timeout reached
 	return fmt.Errorf("pod not ready")
+}
+
+func (r *RemoteDevelopment) getResourceContainers() ([]coreV1.Container, error) {
+	switch r.resourceType {
+	case Deployment:
+		return k8sTools.GetDeploymentContainers(r.deployment), nil
+	case StatefulSet:
+		return k8sTools.GetStatefulSetContainers(r.statefulSet), nil
+	case DaemonSet:
+		return k8sTools.GetDaemonSetContainers(r.daemonSet), nil
+	default:
+		return []coreV1.Container{}, r.resourceTypeNotSupportedError()
+	}
+}
+
+func (r *RemoteDevelopment) getResourceContainer(containerName string) (*coreV1.Container, error) {
+	switch r.resourceType {
+	case Deployment:
+		return k8sTools.GetDeploymentContainerByName(r.deployment, containerName)
+	case StatefulSet:
+		return k8sTools.GetStatefulSetContainerByName(r.statefulSet, containerName)
+	case DaemonSet:
+		return k8sTools.GetDaemonSetContainerByName(r.daemonSet, containerName)
+	default:
+		return nil, ErrNoResourceSelected
+	}
 }

@@ -104,12 +104,28 @@ func (k *KubernetesClient) UpdateDeployment(namespace string, deployment *appsV1
 	return k.clientSet.AppsV1().Deployments(namespace).Update(context.TODO(), deployment, apiMetaV1.UpdateOptions{})
 }
 
+func (k *KubernetesClient) UpdateStatefulSet(namespace string, statefulSet *appsV1.StatefulSet) (*appsV1.StatefulSet, error) {
+	return k.clientSet.AppsV1().StatefulSets(namespace).Update(context.TODO(), statefulSet, apiMetaV1.UpdateOptions{})
+}
+
+func (k *KubernetesClient) UpdateDaemonSet(namespace string, daemonSet *appsV1.DaemonSet) (*appsV1.DaemonSet, error) {
+	return k.clientSet.AppsV1().DaemonSets(namespace).Update(context.TODO(), daemonSet, apiMetaV1.UpdateOptions{})
+}
+
 func (k *KubernetesClient) ListNamespaces() (*coreV1.NamespaceList, error) {
 	return k.clientSet.CoreV1().Namespaces().List(context.TODO(), apiMetaV1.ListOptions{})
 }
 
 func (k *KubernetesClient) ListDeployments(namespace string) (*appsV1.DeploymentList, error) {
 	return k.clientSet.AppsV1().Deployments(namespace).List(context.TODO(), apiMetaV1.ListOptions{})
+}
+
+func (k *KubernetesClient) ListStatefulSets(namespace string) (*appsV1.StatefulSetList, error) {
+	return k.clientSet.AppsV1().StatefulSets(namespace).List(context.TODO(), apiMetaV1.ListOptions{})
+}
+
+func (k *KubernetesClient) ListDaemonSets(namespace string) (*appsV1.DaemonSetList, error) {
+	return k.clientSet.AppsV1().DaemonSets(namespace).List(context.TODO(), apiMetaV1.ListOptions{})
 }
 
 func (k *KubernetesClient) DeletePVC(namespace, name string) error {
@@ -126,6 +142,14 @@ func (k *KubernetesClient) GetNamespace(name string) (*coreV1.Namespace, error) 
 
 func (k *KubernetesClient) GetDeployment(namespace, deploymentName string) (*appsV1.Deployment, error) {
 	return k.clientSet.AppsV1().Deployments(namespace).Get(context.TODO(), deploymentName, apiMetaV1.GetOptions{})
+}
+
+func (k *KubernetesClient) GetStatefulSet(namespace, name string) (*appsV1.StatefulSet, error) {
+	return k.clientSet.AppsV1().StatefulSets(namespace).Get(context.TODO(), name, apiMetaV1.GetOptions{})
+}
+
+func (k *KubernetesClient) GetDaemonSet(namespace, name string) (*appsV1.DaemonSet, error) {
+	return k.clientSet.AppsV1().DaemonSets(namespace).Get(context.TODO(), name, apiMetaV1.GetOptions{})
 }
 
 func (k *KubernetesClient) ApplySecret(secret *applyCoreV1.SecretApplyConfiguration) error {
@@ -146,6 +170,16 @@ func (k *KubernetesClient) ApplyPVC(pvc *applyCoreV1.PersistentVolumeClaimApplyC
 
 func (k *KubernetesClient) PatchDeployment(namespace, name string, data []byte) error {
 	_, err := k.clientSet.AppsV1().Deployments(namespace).Patch(context.TODO(), name, types.StrategicMergePatchType, data, apiMetaV1.PatchOptions{})
+	return err
+}
+
+func (k *KubernetesClient) PatchStatefulSet(namespace, name string, data []byte) error {
+	_, err := k.clientSet.AppsV1().StatefulSets(namespace).Patch(context.TODO(), name, types.StrategicMergePatchType, data, apiMetaV1.PatchOptions{})
+	return err
+}
+
+func (k *KubernetesClient) PatchDaemonSet(namespace, name string, data []byte) error {
+	_, err := k.clientSet.AppsV1().DaemonSets(namespace).Patch(context.TODO(), name, types.StrategicMergePatchType, data, apiMetaV1.PatchOptions{})
 	return err
 }
 
