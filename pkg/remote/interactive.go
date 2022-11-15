@@ -54,34 +54,72 @@ func (r *RemoteDevelopment) SelectNamespace() error {
 	return nil
 }
 
-func (r *RemoteDevelopment) SelectResourceType() error {
-	resourceTypeMap := map[string]ResourceType{
-		string(Deployment):  Deployment,
-		string(StatefulSet): StatefulSet,
-		string(DaemonSet):   DaemonSet,
-	}
-
-	items := []string{string(Deployment), string(StatefulSet), string(DaemonSet)}
-	resourceType, err := util.Select("Select resource type", items)
+func (r *RemoteDevelopment) SelectResource() error {
+	availableResources, err := r.GetAvailableResourceFromNamespace(r.namespace.GetName())
 	if err != nil {
 		return err
 	}
 
-	r.WithResourceType(resourceTypeMap[resourceType])
+	if len(availableResources) == 1 {
+		resource := availableResources[0]
+		r.WithResource(resource)
+
+		return nil
+	}
+
+	selectItems := []string{}
+	resourcesItemsMap := map[string]Resource{}
+	for _, resourceItem := range availableResources {
+		resourceType, err := r.getResourceType(resourceItem)
+		if err != nil {
+			return err
+		}
+
+		resourceItemLabel := fmt.Sprintf("%s / %s", resourceType, resourceItem.GetName())
+		selectItems = append(selectItems, resourceItemLabel)
+		resourcesItemsMap[resourceItemLabel] = resourceItem
+	}
+
+	selectedResourceItemLabel, err := util.Select("Select resource", selectItems)
+	if err != nil {
+		return err
+	}
+
+	r.WithResource(resourcesItemsMap[selectedResourceItemLabel])
 	return nil
 }
 
-func (r *RemoteDevelopment) SelectResource() error {
-	switch r.resourceType {
-	case Deployment:
-		return r.SelectDeployment()
-	case StatefulSet:
-		return r.SelectStatefulSet()
-	case DaemonSet:
-		return r.SelectDaemonSet()
+func (r *RemoteDevelopment) GetAvailableResourceFromNamespace(namespace string) ([]Resource, error) {
+	availableResources := []Resource{}
+
+	deployments, err := r.kubernetesClient.ListDeployments(namespace)
+	if err != nil {
+		return nil, err
+	}
+	for _, deploymentItem := range deployments.Items {
+		item := deploymentItem
+		availableResources = append(availableResources, &item)
 	}
 
-	return nil
+	statefulsets, err := r.kubernetesClient.ListStatefulSets(namespace)
+	if err != nil {
+		return nil, err
+	}
+	for _, statefulsetItem := range statefulsets.Items {
+		item := statefulsetItem
+		availableResources = append(availableResources, &item)
+	}
+
+	daemonsets, err := r.kubernetesClient.ListDaemonSets(namespace)
+	if err != nil {
+		return nil, err
+	}
+	for _, daemonsetItem := range daemonsets.Items {
+		item := daemonsetItem
+		availableResources = append(availableResources, &item)
+	}
+
+	return availableResources, nil
 }
 
 func (r *RemoteDevelopment) SelectDeployment() error {

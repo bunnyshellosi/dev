@@ -1,6 +1,8 @@
 package remote
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"bunnyshell.com/dev/pkg/k8s"
@@ -39,13 +41,17 @@ func init() {
 			} else if daemonSetName != "" {
 				remoteDevelopment.WithDaemonSetName(daemonSetName)
 			} else {
-				if err := remoteDevelopment.SelectResourceType(); err != nil {
-					return err
-				}
-
 				if err := remoteDevelopment.SelectResource(); err != nil {
 					return err
 				}
+			}
+
+			selectedResource, err := remoteDevelopment.GetResource()
+			if err != nil {
+				return err
+			}
+			if remoteDevelopment.IsActiveForResource(selectedResource) {
+				panic(fmt.Errorf("the selected resource is already under remote development"))
 			}
 
 			if containerName != "" {
@@ -83,7 +89,7 @@ func init() {
 	command.Flags().StringVarP(&namespaceName, "namespace", "n", "", "Kubernetes Namespace")
 	command.Flags().StringVarP(&deploymentName, "deployment", "d", "", "Kubernetes Deployment")
 	command.Flags().StringVarP(&statefulSetName, "statefulset", "s", "", "Kubernetes StatefulSet")
-	command.Flags().StringVar(&daemonSetName, "daemonset", "", "Kubernetes DaemonSet")
+	command.Flags().StringVarP(&daemonSetName, "daemonset", "t", "", "Kubernetes DaemonSet")
 	command.Flags().StringVar(&containerName, "container", "", "Kubernetes Container")
 	command.Flags().StringVarP(&localSyncPath, "local-sync-path", "l", "", "Local folder path to sync")
 	command.Flags().StringVarP(&remoteSyncPath, "remote-sync-path", "r", "", "Remote folder path to sync")

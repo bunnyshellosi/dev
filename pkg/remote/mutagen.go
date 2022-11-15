@@ -156,7 +156,7 @@ func (r *RemoteDevelopment) getMutagenSessionName() (string, error) {
 }
 
 func (r *RemoteDevelopment) getMutagenSessionKey() (string, error) {
-	resource, err := r.getResource()
+	resource, err := r.GetResource()
 	if err != nil {
 		return "", err
 	}

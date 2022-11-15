@@ -208,7 +208,7 @@ func (r *RemoteDevelopment) WithContainerName(containerName string) *RemoteDevel
 	return r.WithContainer(container)
 }
 
-func (r *RemoteDevelopment) getResource() (Resource, error) {
+func (r *RemoteDevelopment) GetResource() (Resource, error) {
 	switch r.resourceType {
 	case Deployment:
 		return r.deployment, nil
@@ -219,4 +219,48 @@ func (r *RemoteDevelopment) getResource() (Resource, error) {
 	default:
 		return nil, r.resourceTypeNotSupportedError()
 	}
+}
+
+func (r *RemoteDevelopment) getResourceType(resource Resource) (ResourceType, error) {
+	switch resource.(type) {
+	case *appsV1.Deployment:
+		return Deployment, nil
+	case *appsV1.StatefulSet:
+		return StatefulSet, nil
+	case *appsV1.DaemonSet:
+		return DaemonSet, nil
+	default:
+		return "", ErrInvalidResourceType
+	}
+}
+
+func (r *RemoteDevelopment) WithResource(resource Resource) *RemoteDevelopment {
+	resourceType, err := r.getResourceType(resource)
+	if err != nil {
+		panic(err)
+	}
+
+	switch resourceType {
+	case Deployment:
+		r.WithDeployment(resource.(*appsV1.Deployment))
+	case StatefulSet:
+		r.WithStatefulSet(resource.(*appsV1.StatefulSet))
+	case DaemonSet:
+		r.WithDaemonSet(resource.(*appsV1.DaemonSet))
+	default:
+		panic(fmt.Errorf(
+			"could not determine the resource Kind for resource type \"%s\"",
+			resourceType,
+		))
+	}
+
+	r.WithResourceType(resourceType)
+
+	return r
+}
+
+func (r *RemoteDevelopment) IsActiveForResource(resource Resource) bool {
+	activeLabelValue, isPresent := resource.GetLabels()[MetadataActive]
+
+	return isPresent && activeLabelValue == "true"
 }
