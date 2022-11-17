@@ -208,7 +208,7 @@ func (r *RemoteDevelopment) WithContainerName(containerName string) *RemoteDevel
 	return r.WithContainer(container)
 }
 
-func (r *RemoteDevelopment) GetResource() (Resource, error) {
+func (r *RemoteDevelopment) getResource() (Resource, error) {
 	switch r.resourceType {
 	case Deployment:
 		return r.deployment, nil
@@ -254,13 +254,5 @@ func (r *RemoteDevelopment) WithResource(resource Resource) *RemoteDevelopment {
 		))
 	}
 
-	r.WithResourceType(resourceType)
-
 	return r
-}
-
-func (r *RemoteDevelopment) IsActiveForResource(resource Resource) bool {
-	activeLabelValue, isPresent := resource.GetLabels()[MetadataActive]
-
-	return isPresent && activeLabelValue == "true"
 }

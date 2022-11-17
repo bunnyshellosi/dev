@@ -55,7 +55,7 @@ func (r *RemoteDevelopment) SelectNamespace() error {
 }
 
 func (r *RemoteDevelopment) SelectResource() error {
-	availableResources, err := r.GetAvailableResourceFromNamespace(r.namespace.GetName())
+	availableResources, err := r.getAvailableResourceFromNamespace(r.namespace.GetName())
 	if err != nil {
 		return err
 	}
@@ -89,7 +89,7 @@ func (r *RemoteDevelopment) SelectResource() error {
 	return nil
 }
 
-func (r *RemoteDevelopment) GetAvailableResourceFromNamespace(namespace string) ([]Resource, error) {
+func (r *RemoteDevelopment) getAvailableResourceFromNamespace(namespace string) ([]Resource, error) {
 	availableResources := []Resource{}
 
 	deployments, err := r.kubernetesClient.ListDeployments(namespace)
