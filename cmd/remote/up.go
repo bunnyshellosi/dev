@@ -1,8 +1,6 @@
 package remote
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 
 	"bunnyshell.com/dev/pkg/k8s"
@@ -44,14 +42,6 @@ func init() {
 				if err := remoteDevelopment.SelectResource(); err != nil {
 					return err
 				}
-			}
-
-			selectedResource, err := remoteDevelopment.GetResource()
-			if err != nil {
-				return err
-			}
-			if remoteDevelopment.IsActiveForResource(selectedResource) {
-				panic(fmt.Errorf("the selected resource is already under remote development"))
 			}
 
 			if containerName != "" {

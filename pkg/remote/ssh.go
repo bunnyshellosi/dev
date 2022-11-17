@@ -126,7 +126,7 @@ func (r *RemoteDevelopment) ensureSSHConfigEntry() error {
 }
 
 func (r *RemoteDevelopment) getSSHHostname() (string, error) {
-	resource, err := r.GetResource()
+	resource, err := r.getResource()
 	if err != nil {
 		return "", err
 	}
