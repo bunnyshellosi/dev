@@ -51,10 +51,15 @@ const (
 	// ConfigSourceDir = "config"
 )
 
+var (
+	ErrInvalidResourceType = fmt.Errorf("invalid resource type")
+)
+
 type Resource interface {
 	GetName() string
 	GetNamespace() string
 	GetAnnotations() map[string]string
+	GetLabels() map[string]string
 }
 
 func (r *RemoteDevelopment) resourceTypeNotSupportedError() error {
@@ -114,7 +119,7 @@ func (r *RemoteDevelopment) prepareResource() error {
 		return err
 	}
 
-	resource, err := r.getResource()
+	resource, err := r.GetResource()
 	if err != nil {
 		return err
 	}
@@ -160,7 +165,7 @@ func (r *RemoteDevelopment) prepareResource() error {
 }
 
 func (r *RemoteDevelopment) restoreDeployment() error {
-	resource, err := r.getResource()
+	resource, err := r.GetResource()
 	if err != nil {
 		return err
 	}
@@ -201,7 +206,7 @@ func (r *RemoteDevelopment) restoreDeployment() error {
 }
 
 func (r *RemoteDevelopment) getResourceManifest() ([]byte, error) {
-	resource, err := r.getResource()
+	resource, err := r.GetResource()
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +312,7 @@ func (r *RemoteDevelopment) ensurePVC() error {
 		coreV1.ResourceStorage: resource.MustParse("2Gi"),
 	}
 
-	resource, err := r.getResource()
+	resource, err := r.GetResource()
 	if err != nil {
 		return err
 	}
@@ -328,7 +333,7 @@ func (r *RemoteDevelopment) ensurePVC() error {
 }
 
 func (r *RemoteDevelopment) preparePodTemplateSpec(podTemplateSpec *applyCoreV1.PodTemplateSpecApplyConfiguration) error {
-	resource, err := r.getResource()
+	resource, err := r.GetResource()
 	if err != nil {
 		return err
 	}
@@ -484,7 +489,7 @@ func (r *RemoteDevelopment) getSecretName() string {
 }
 
 func (r *RemoteDevelopment) getPVCName() (string, error) {
-	resource, err := r.getResource()
+	resource, err := r.GetResource()
 	if err != nil {
 		return "", err
 	}
@@ -501,7 +506,7 @@ func (r *RemoteDevelopment) ensureSecret() error {
 		return err
 	}
 
-	resource, err := r.getResource()
+	resource, err := r.GetResource()
 	if err != nil {
 		return err
 	}
@@ -520,7 +525,7 @@ func (r *RemoteDevelopment) ensureSecret() error {
 }
 
 func (r *RemoteDevelopment) deletePVC() error {
-	resource, err := r.getResource()
+	resource, err := r.GetResource()
 	if err != nil {
 		return err
 	}
@@ -549,7 +554,7 @@ func (r *RemoteDevelopment) waitPodReady() error {
 	r.StartSpinner(" Waiting for pod to be ready")
 	defer r.StopSpinner()
 
-	resource, err := r.getResource()
+	resource, err := r.GetResource()
 	if err != nil {
 		return err
 	}

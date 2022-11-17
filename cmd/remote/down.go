@@ -35,10 +35,6 @@ func init() {
 			} else if daemonSetName != "" {
 				remoteDevelopment.WithDaemonSetName(daemonSetName)
 			} else {
-				if err := remoteDevelopment.SelectResourceType(); err != nil {
-					return err
-				}
-
 				if err := remoteDevelopment.SelectResource(); err != nil {
 					return err
 				}
@@ -51,7 +47,7 @@ func init() {
 	command.Flags().StringVarP(&namespaceName, "namespace", "n", "", "Kubernetes Namespace")
 	command.Flags().StringVarP(&deploymentName, "deployment", "d", "", "Kubernetes Deployment")
 	command.Flags().StringVarP(&statefulSetName, "statefulset", "s", "", "Kubernetes StatefulSet")
-	command.Flags().StringVar(&daemonSetName, "daemonset", "s", "Kubernetes DaemonSet")
+	command.Flags().StringVarP(&daemonSetName, "daemonset", "t", "", "Kubernetes DaemonSet")
 
 	mainCmd.AddCommand(command)
 }

@@ -27,7 +27,7 @@ func (r *RemoteDevelopment) ensureRemoteSSHPortForward() error {
 }
 
 func (r *RemoteDevelopment) getRemoteDevPod() (*coreV1.Pod, error) {
-	resource, err := r.getResource()
+	resource, err := r.GetResource()
 	if err != nil {
 		return nil, err
 	}
