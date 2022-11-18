@@ -473,15 +473,26 @@ func (r *RemoteDevelopment) prepareContainer(podSpec *applyCoreV1.PodSpecApplyCo
 		// 	WithSubPath(ConfigSourceDir),
 	}
 
+	nullProbe := r.getNullProbeApplyConfiguration()
+
 	startCommand := binariesVolumeMountPath + "/start.sh"
 	container := applyCoreV1.Container().
 		WithName(r.container.Name).
 		WithCommand(startCommand).
+		WithLivenessProbe(nullProbe).
+		WithReadinessProbe(nullProbe).
+		WithStartupProbe(nullProbe).
 		WithVolumeMounts(volumeMounts...)
 
 	podSpec.WithContainers(container)
 
 	return nil
+}
+
+func (r *RemoteDevelopment) getNullProbeApplyConfiguration() *applyCoreV1.ProbeApplyConfiguration {
+	return applyCoreV1.Probe().
+		WithExec(applyCoreV1.ExecAction().WithCommand("true")).
+		WithPeriodSeconds(5)
 }
 
 func (r *RemoteDevelopment) getSecretName() string {
