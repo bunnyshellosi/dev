@@ -98,6 +98,7 @@ func (r *RemoteDevelopment) startMutagenSession() error {
 	}
 
 	mutagenCmd := exec.Command(mutagenBinPath, mutagenArgs...)
+
 	output, err := mutagenCmd.CombinedOutput()
 	if mutagenCmd.ProcessState.ExitCode() != 0 {
 		fmt.Println(string(output))
