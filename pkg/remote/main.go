@@ -41,6 +41,10 @@ func (r *RemoteDevelopment) Up() error {
 		return err
 	}
 
+	if err := r.startSSHTunnels(); err != nil {
+		return err
+	}
+
 	return r.startMutagenSession()
 }
 
@@ -74,9 +78,14 @@ func (r *RemoteDevelopment) Wait() error {
 func (r *RemoteDevelopment) Close() {
 	r.terminateMutagenSession()
 
+	// close ssh tunnels
+	for i := range r.sshTunnels {
+		r.sshTunnels[i].Stop()
+	}
+
 	// close k8s remote ssh portforwarding
-	if r.remoteSSHForwarder != nil {
-		r.remoteSSHForwarder.Close()
+	if r.sshPortForwarder != nil {
+		r.sshPortForwarder.Close()
 	}
 
 	// close cli command

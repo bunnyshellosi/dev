@@ -3,9 +3,17 @@ package remote
 import (
 	"fmt"
 
+	"bunnyshell.com/dev/pkg/k8s"
+	"bunnyshell.com/dev/pkg/ssh"
+
 	coreV1 "k8s.io/api/core/v1"
 	apiMetaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+)
+
+const (
+	SSHPortForwardInterface  = "127.0.0.1"
+	SSHPortForwardRemotePort = 2222
 )
 
 func (r *RemoteDevelopment) ensureRemoteSSHPortForward() error {
@@ -17,11 +25,28 @@ func (r *RemoteDevelopment) ensureRemoteSSHPortForward() error {
 		return err
 	}
 
-	forwarder, err := r.kubernetesClient.PortForwardRemoteSSH(remoteDevPod)
+	r.sshPortForwardOptions = k8s.NewPortForwardOptions(SSHPortForwardInterface, SSHPortForwardRemotePort, 0)
+	forwarder, err := r.kubernetesClient.PortForward(remoteDevPod, r.sshPortForwardOptions)
 	if err != nil {
 		return err
 	}
-	r.remoteSSHForwarder = forwarder
+	r.sshPortForwarder = forwarder
+
+	return nil
+}
+
+func (r *RemoteDevelopment) startSSHTunnels() error {
+	for i := range r.sshTunnels {
+		serverEndpoint := ssh.NewEndpoint(r.sshPortForwardOptions.Interface, r.sshPortForwardOptions.LocalPort)
+		auth, err := ssh.PrivateKeyFile(r.sshPrivateKeyPath)
+		if err != nil {
+			panic(err)
+		}
+		r.sshTunnels[i].WithSSHServerEndpoint(serverEndpoint).WithAuths(auth)
+		if err := r.sshTunnels[i].Start(); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }

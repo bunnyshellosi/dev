@@ -24,9 +24,7 @@ import (
 )
 
 const (
-	PortForwardMethod    = "POST"
-	PortForwardInterface = "127.0.0.1"
-	SSHRemotePort        = 2222
+	PortForwardMethod = "POST"
 
 	BunnyshellRemoteDevFieldManager = "bunnyshell-dev"
 )
@@ -59,8 +57,6 @@ type KubernetesClient struct {
 	config     clientcmd.ClientConfig
 	restConfig *rest.Config
 	clientSet  *kubernetes.Clientset
-
-	SSHPortForwardOptions *PortForwardOptions
 }
 
 func NewKubernetesClient(kubeConfigPath string) (*KubernetesClient, error) {
@@ -90,7 +86,6 @@ func NewKubernetesClient(kubeConfigPath string) (*KubernetesClient, error) {
 	newKubernetes.config = config
 	newKubernetes.restConfig = restConfig
 	newKubernetes.clientSet = clientset
-	newKubernetes.SSHPortForwardOptions = NewPortForwardOptions(PortForwardInterface, SSHRemotePort, 0)
 
 	return newKubernetes, nil
 }
@@ -195,8 +190,7 @@ func (k *KubernetesClient) GetPortForwardSubresourceURL(pod *coreV1.Pod) *url.UR
 		SubResource("portforward").URL()
 }
 
-// @todo better abstraction for portforward
-func (k *KubernetesClient) PortForwardRemoteSSH(pod *coreV1.Pod) (*portforward.PortForwarder, error) {
+func (k *KubernetesClient) PortForward(pod *coreV1.Pod, portForwardOptions *PortForwardOptions) (*portforward.PortForwarder, error) {
 	transport, upgrader, err := spdy.RoundTripperFor(k.restConfig)
 	if err != nil {
 		return nil, err
@@ -205,22 +199,24 @@ func (k *KubernetesClient) PortForwardRemoteSSH(pod *coreV1.Pod) (*portforward.P
 	url := k.GetPortForwardSubresourceURL(pod)
 	dialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, PortForwardMethod, url)
 
-	k.SSHPortForwardOptions.LocalPort, err = util.GetAvailableEphemeralPort(k.SSHPortForwardOptions.Interface)
-	if err != nil {
-		return nil, err
+	if portForwardOptions.LocalPort == 0 {
+		portForwardOptions.LocalPort, err = util.GetAvailableEphemeralPort(portForwardOptions.Interface)
+		if err != nil {
+			return nil, err
+		}
 	}
 	ports := []string{fmt.Sprintf(
 		"%d:%d",
-		k.SSHPortForwardOptions.LocalPort,
-		k.SSHPortForwardOptions.RemotePort,
+		portForwardOptions.LocalPort,
+		portForwardOptions.RemotePort,
 	)}
 
 	forwarder, err := portforward.NewOnAddresses(
 		dialer,
-		[]string{k.SSHPortForwardOptions.Interface},
+		[]string{portForwardOptions.Interface},
 		ports,
-		k.SSHPortForwardOptions.StopChannel,
-		k.SSHPortForwardOptions.ReadyChannel,
+		portForwardOptions.StopChannel,
+		portForwardOptions.ReadyChannel,
 		io.Discard,
 		io.Discard,
 	)

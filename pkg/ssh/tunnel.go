@@ -11,48 +11,90 @@ import (
 )
 
 type SSHTunnel struct {
-	Local  *Endpoint
-	Server *Endpoint
-	Remote *Endpoint
+	SSHServerEndpoint *Endpoint
+	LocalEndpoint     *Endpoint
+	RemoteEndpoint    *Endpoint
+
+	Mode ForwardMode
 
 	Config *ssh.ClientConfig
 
-	Log *log.Logger
+	Logger *log.Logger
 
 	ReadyChannel chan bool
 	StopChannel  chan bool
 
+	sshConn  *ssh.Client
 	listener net.Listener
 }
 
 func (tunnel *SSHTunnel) logf(fmt string, args ...interface{}) {
-	if tunnel.Log != nil {
-		tunnel.Log.Printf(fmt, args...)
+	if tunnel.Logger != nil {
+		tunnel.Logger.Printf(fmt, args...)
 	}
 }
 
 func (tunnel *SSHTunnel) Start() error {
+	if err := tunnel.setupSSHConnection(); err != nil {
+		return err
+	}
+
 	if err := tunnel.listen(); err != nil {
 		return err
 	}
 
-	tunnel.Local.Port = tunnel.listener.Addr().(*net.TCPAddr).Port
+	if tunnel.LocalEndpoint.Port == 0 && tunnel.Mode == ForwardModeForward {
+		tunnel.LocalEndpoint.Port = tunnel.listener.Addr().(*net.TCPAddr).Port
+	} else if tunnel.RemoteEndpoint.Port == 0 && tunnel.Mode == ForwardModeReverse {
+		tunnel.RemoteEndpoint.Port = tunnel.listener.Addr().(*net.TCPAddr).Port
+	}
+
+	return nil
+}
+
+func (tunnel *SSHTunnel) Wait() {
+	<-tunnel.StopChannel
+}
+
+func (tunnel *SSHTunnel) Run() error {
+	if err := tunnel.Start(); err != nil {
+		return err
+	}
+
 	if tunnel.ReadyChannel != nil {
 		close(tunnel.ReadyChannel)
 	}
 
-	<-tunnel.StopChannel
+	tunnel.Wait()
+
+	return nil
+}
+
+func (tunnel *SSHTunnel) setupSSHConnection() error {
+	sshConn, err := ssh.Dial("tcp", tunnel.SSHServerEndpoint.String(), tunnel.Config)
+	if err != nil {
+		return err
+	}
+
+	tunnel.sshConn = sshConn
 
 	return nil
 }
 
 func (tunnel *SSHTunnel) listen() error {
-	listener, err := net.Listen("tcp", tunnel.Local.String())
+	var listener net.Listener
+	var err error
+	switch tunnel.Mode {
+	case ForwardModeForward:
+		listener, err = net.Listen("tcp", tunnel.LocalEndpoint.String())
+	case ForwardModeReverse:
+		listener, err = tunnel.sshConn.Listen("tcp", tunnel.RemoteEndpoint.String())
+	}
 	if err != nil {
 		return err
 	}
-	tunnel.listener = listener
 
+	tunnel.listener = listener
 	go tunnel.waitForConnection()
 
 	return nil
@@ -72,22 +114,22 @@ func (tunnel *SSHTunnel) waitForConnection() {
 	}
 }
 
-func (tunnel *SSHTunnel) handleConnection(localConn net.Conn) {
-	defer localConn.Close()
+func (tunnel *SSHTunnel) handleConnection(bindConn net.Conn) {
+	defer bindConn.Close()
 
-	serverConn, err := ssh.Dial("tcp", tunnel.Server.String(), tunnel.Config)
-	if err != nil {
-		tunnel.logf("server dial error: %s", err)
-		return
+	var dialConn net.Conn
+	var err error
+	switch tunnel.Mode {
+	case ForwardModeForward:
+		dialConn, err = tunnel.sshConn.Dial("tcp", tunnel.RemoteEndpoint.String())
+	case ForwardModeReverse:
+		dialConn, err = net.Dial("tcp", tunnel.LocalEndpoint.String())
 	}
-	defer serverConn.Close()
-
-	remoteConn, err := serverConn.Dial("tcp", tunnel.Remote.String())
 	if err != nil {
 		tunnel.logf("remote dial error: %s", err)
 		return
 	}
-	defer remoteConn.Close()
+	defer dialConn.Close()
 
 	var wg sync.WaitGroup
 	copyConn := func(writer, reader net.Conn) {
@@ -99,10 +141,10 @@ func (tunnel *SSHTunnel) handleConnection(localConn net.Conn) {
 	}
 
 	wg.Add(1)
-	go copyConn(localConn, remoteConn)
+	go copyConn(bindConn, dialConn)
 
 	wg.Add(1)
-	go copyConn(remoteConn, localConn)
+	go copyConn(dialConn, bindConn)
 
 	wg.Wait()
 }
@@ -112,29 +154,61 @@ func (tunnel *SSHTunnel) Stop() {
 		tunnel.listener.Close()
 	}
 
+	if tunnel.sshConn != nil {
+		tunnel.sshConn.Close()
+	}
+
 	if tunnel.StopChannel != nil {
 		close(tunnel.StopChannel)
 	}
 }
 
-func NewSSHTunnel(serverHost string, serverPort int, auth ssh.AuthMethod, remoteHost string, remotePort int) *SSHTunnel {
-	localEndpoint := NewEndpoint("127.0.0.1", 0)
-	server := NewEndpoint(serverHost, serverPort)
-
+func NewSSHTunnel() *SSHTunnel {
 	return &SSHTunnel{
 		Config: &ssh.ClientConfig{
-			User: server.User,
-			Auth: []ssh.AuthMethod{auth},
-			HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
-				return nil
-			},
+			Auth:            []ssh.AuthMethod{},
+			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		},
-		// replace with a file logger, once we have a logging solution
-		Log:          nil,
-		Local:        localEndpoint,
-		Server:       server,
-		Remote:       NewEndpoint(remoteHost, remotePort),
+		Logger: nil,
+		Mode:   ForwardModeForward,
+
 		ReadyChannel: make(chan bool),
 		StopChannel:  make(chan bool),
 	}
+}
+
+func (tunnel *SSHTunnel) WithAuths(values ...ssh.AuthMethod) *SSHTunnel {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithAuths")
+		}
+		tunnel.Config.Auth = append(tunnel.Config.Auth, values[i])
+	}
+	return tunnel
+}
+
+func (tunnel *SSHTunnel) WithSSHServerEndpoint(endpoint *Endpoint) *SSHTunnel {
+	tunnel.SSHServerEndpoint = endpoint
+	tunnel.Config.User = endpoint.User
+	return tunnel
+}
+
+func (tunnel *SSHTunnel) WithLocalEndpoint(endpoint *Endpoint) *SSHTunnel {
+	tunnel.LocalEndpoint = endpoint
+	return tunnel
+}
+
+func (tunnel *SSHTunnel) WithRemoteEndpoint(endpoint *Endpoint) *SSHTunnel {
+	tunnel.RemoteEndpoint = endpoint
+	return tunnel
+}
+
+func (tunnel *SSHTunnel) WithMode(mode ForwardMode) *SSHTunnel {
+	tunnel.Mode = mode
+	return tunnel
+}
+
+func (tunnel *SSHTunnel) WithLog(logger *log.Logger) *SSHTunnel {
+	tunnel.Logger = logger
+	return tunnel
 }

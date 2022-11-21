@@ -166,14 +166,14 @@ func getBunnyshellConfigFile() (*os.File, error) {
 	return os.Open(filePath)
 }
 
-func PrivateKeyFile(file string) ssh.AuthMethod {
+func PrivateKeyFile(file string) (ssh.AuthMethod, error) {
 	buffer, err := os.ReadFile(file)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	key, err := ssh.ParsePrivateKey(buffer)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return ssh.PublicKeys(key)
+	return ssh.PublicKeys(key), nil
 }
