@@ -45,8 +45,10 @@ const (
 	SecretAuthorizedKeysKeyName = "authorized_keys"
 	SecretAuthorizedKeysPath    = "ssh/authorized_keys"
 
-	ContainerNameBinaries = "remote-dev-bin"
-	ContainerNameWork     = "remote-dev-work"
+	ContainerNameBinaries         = "remote-dev-bin"
+	ContainerNameWorkPermissions  = "remote-dev-work-permissions"
+	ContainerNameWork             = "remote-dev-work"
+	ContainerImageWorkPermissions = "alpine:3.17"
 
 	// ConfigSourceDir = "config"
 )
@@ -309,7 +311,7 @@ func (r *RemoteDevelopment) ensurePVC() error {
 	labels[MetadataActive] = "true"
 
 	resourceLimits := coreV1.ResourceList{
-		coreV1.ResourceStorage: resource.MustParse("2Gi"),
+		coreV1.ResourceStorage: resource.MustParse("5Gi"),
 	}
 
 	resource, err := r.getResource()
@@ -418,24 +420,37 @@ func (r *RemoteDevelopment) prepareInitContainers(podSpec *applyCoreV1.PodSpecAp
 			WithName(VolumeNameBinaries).
 			WithMountPath(binariesVolumeMountPath))
 
+	workVolumesMountPath := "/volumes"
 	appSourceDir := r.getRemoteSyncPathHash()
-	workVolumeMountPath := "/volumes/" + appSourceDir
+	workVolumeAppSourceDir := fmt.Sprintf("%s/%s", workVolumesMountPath, appSourceDir)
+
+	workPermissionsInitContainer := applyCoreV1.Container().
+		WithName(ContainerNameWorkPermissions).
+		WithCommand("sh", "-c", fmt.Sprintf(
+			"mkdir -p -m 777 %s",
+			workVolumeAppSourceDir,
+		)).
+		WithImage(ContainerImageWorkPermissions).
+		WithImagePullPolicy(coreV1.PullIfNotPresent).
+		WithVolumeMounts(applyCoreV1.VolumeMount().
+			WithName(VolumeNameWork).
+			WithMountPath(workVolumesMountPath))
+
 	workInitContainer := applyCoreV1.Container().
 		WithName(ContainerNameWork).
 		WithCommand("sh", "-c", fmt.Sprintf(
 			"[ \"$(ls -A %s)\" ] || (cp -Rp %s/. %s; exit 0)",
-			workVolumeMountPath,
+			workVolumeAppSourceDir,
 			r.remoteSyncPath,
-			workVolumeMountPath,
+			workVolumeAppSourceDir,
 		)).
 		WithImage(r.container.Image).
 		WithImagePullPolicy(coreV1.PullIfNotPresent).
 		WithVolumeMounts(applyCoreV1.VolumeMount().
 			WithName(VolumeNameWork).
-			WithMountPath(workVolumeMountPath).
-			WithSubPath(appSourceDir))
+			WithMountPath(workVolumesMountPath))
 
-	podSpec.WithInitContainers(binariesInitContainer, workInitContainer)
+	podSpec.WithInitContainers(binariesInitContainer, workPermissionsInitContainer, workInitContainer)
 
 	return nil
 }
