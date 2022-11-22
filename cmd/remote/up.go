@@ -17,6 +17,8 @@ func init() {
 
 		localSyncPath  string
 		remoteSyncPath string
+
+		portMappings []string
 	)
 
 	command := &cobra.Command{
@@ -62,6 +64,12 @@ func init() {
 				return err
 			}
 
+			if len(portMappings) > 0 {
+				if err := remoteDevelopment.PrepareSSHTunnels(portMappings); err != nil {
+					return err
+				}
+			}
+
 			// bootstrap
 			if err := remoteDevelopment.Up(); err != nil {
 				return err
@@ -83,6 +91,7 @@ func init() {
 	command.Flags().StringVar(&containerName, "container", "", "Kubernetes Container")
 	command.Flags().StringVarP(&localSyncPath, "local-sync-path", "l", "", "Local folder path to sync")
 	command.Flags().StringVarP(&remoteSyncPath, "remote-sync-path", "r", "", "Remote folder path to sync")
+	command.Flags().StringSliceVarP(&portMappings, "portforward", "p", []string{}, "Port forward: '8080>3000'\nReverse port forward: '9003<9003'\nComma separated: '8080>3000,9003<9003'")
 
 	mainCmd.AddCommand(command)
 }

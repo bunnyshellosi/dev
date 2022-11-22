@@ -2,9 +2,12 @@ package remote
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
 	"time"
 
 	"bunnyshell.com/dev/pkg/k8s"
+	"bunnyshell.com/dev/pkg/ssh"
 	"bunnyshell.com/dev/pkg/util"
 
 	"github.com/briandowns/spinner"
@@ -28,8 +31,11 @@ type RemoteDevelopment struct {
 
 	spinner *spinner.Spinner
 
-	kubernetesClient   *k8s.KubernetesClient
-	remoteSSHForwarder *portforward.PortForwarder
+	kubernetesClient      *k8s.KubernetesClient
+	sshPortForwardOptions *k8s.PortForwardOptions
+	sshPortForwarder      *portforward.PortForwarder
+
+	sshTunnels []*ssh.SSHTunnel
 
 	namespace    *coreV1.Namespace
 	resourceType ResourceType
@@ -255,4 +261,59 @@ func (r *RemoteDevelopment) WithResource(resource Resource) *RemoteDevelopment {
 	}
 
 	return r
+}
+
+func (r *RemoteDevelopment) WithSSHTunnels(values ...*ssh.SSHTunnel) *RemoteDevelopment {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithSSHTunnels")
+		}
+		r.sshTunnels = append(r.sshTunnels, values[i])
+	}
+	return r
+}
+
+var portForwardExp = regexp.MustCompile("^(?P<local>[0-9]+)(?P<direction>>|<)(?P<remote>[0-9]+)$")
+
+func (r *RemoteDevelopment) PrepareSSHTunnels(portMappings []string) error {
+	for i := range portMappings {
+		portMapping := portMappings[i]
+
+		if !portForwardExp.MatchString(portMapping) {
+			return fmt.Errorf("invalid port mapping: %s", portMapping)
+		}
+
+		match := portForwardExp.FindStringSubmatch(portMapping)
+		result := make(map[string]string)
+		for i, name := range portForwardExp.SubexpNames() {
+			if i != 0 && name != "" {
+				result[name] = match[i]
+			}
+		}
+
+		localPort, err := strconv.Atoi(result["local"])
+		if err != nil {
+			return err
+		}
+		remotePort, err := strconv.Atoi(result["remote"])
+		if err != nil {
+			return err
+		}
+		localEndpoint := ssh.NewEndpoint("127.0.0.1", localPort)
+		remoteEndpoint := ssh.NewEndpoint("0.0.0.0", remotePort)
+
+		tunnel := ssh.NewSSHTunnel().
+			WithLocalEndpoint(localEndpoint).
+			WithRemoteEndpoint(remoteEndpoint)
+
+		switch result["direction"] {
+		case ">":
+			tunnel.WithMode(ssh.ForwardModeForward)
+		case "<":
+			tunnel.WithMode(ssh.ForwardModeReverse)
+		}
+
+		r.WithSSHTunnels(tunnel)
+	}
+	return nil
 }
