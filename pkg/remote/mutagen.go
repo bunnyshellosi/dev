@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -261,9 +262,17 @@ func removeMutagenArchive(filePath string) error {
 }
 
 func downloadMutagenArchive(source, destination string) error {
-	client := &http.Client{
-		Timeout: 60 * time.Second,
+	// Configure the connection timeout
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: 60 * time.Second,
+		}).DialContext,
 	}
+
+	client := &http.Client{
+		Transport: transport,
+	}
+
 	out, err := os.Create(destination)
 	if err != nil {
 		return err
