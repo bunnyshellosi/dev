@@ -2,6 +2,7 @@ package remote
 
 import (
 	"archive/tar"
+	"bufio"
 	"compress/gzip"
 	"crypto/md5"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"bunnyshell.com/dev/pkg/build"
@@ -23,9 +25,11 @@ import (
 
 const (
 	mutagenBinFilename      = "mutagen"
-	mutagenConfigFilename   = "mutagen.yaml"
 	mutagenDownloadFilename = "mutagen_%s_%s_%s.tar.gz"
 	mutagenDownloadUrl      = "https://github.com/mutagen-io/mutagen/releases/download/%s/%s"
+
+	mutagenConfigFilenamePattern = "mutagen.%s.yaml"
+	mutagenIgnoreFilename        = ".rdignore"
 )
 
 func (r *RemoteDevelopment) ensureMutagen() error {
@@ -36,21 +40,27 @@ func (r *RemoteDevelopment) ensureMutagen() error {
 		return err
 	}
 
-	return ensureMutagenConfigFile()
+	return r.ensureMutagenConfigFile()
 }
 
-func ensureMutagenConfigFile() error {
-	mutagenConfigFilePath, err := getMutagenConfigFilePath()
+func (r *RemoteDevelopment) ensureMutagenConfigFile() error {
+	mutagenConfigFilePath, err := r.getMutagenConfigFilePath()
 	if err != nil {
 		return err
 	}
 
 	enableVCS := true
-	ignore := mutagenConfig.NewIgnore().WithVCS(&enableVCS).WithPaths([]string{
-		"node_modules",
-		"vendor",
-	})
-	defaults := mutagenConfig.NewSyncDefaults().WithMode(mutagenConfig.OneWayReplica).WithIgnore(ignore)
+	sessionIgnores, err := r.getMutagenSessionIgnores()
+	if sessionIgnores == nil {
+		r.StopSpinner()
+		fmt.Printf("INFO: All files will be synchronized. You can exclude files from sync by creating a %s/%s file.\n", r.localSyncPath, mutagenIgnoreFilename)
+		r.StartSpinner("")
+	}
+	if err != nil {
+		return err
+	}
+	ignore := mutagenConfig.NewIgnore().WithVCS(&enableVCS).WithPaths(sessionIgnores)
+	defaults := mutagenConfig.NewSyncDefaults().WithMode(mutagenConfig.TwoWayResolved).WithIgnore(ignore)
 	sync := mutagenConfig.NewSync().WithDefaults(defaults)
 	config := mutagenConfig.NewConfiguration().WithSync(sync)
 
@@ -70,7 +80,7 @@ func (r *RemoteDevelopment) startMutagenSession() error {
 	if err != nil {
 		return err
 	}
-	mutagenConfigFilePath, err := getMutagenConfigFilePath()
+	mutagenConfigFilePath, err := r.getMutagenConfigFilePath()
 	if err != nil {
 		return err
 	}
@@ -105,6 +115,31 @@ func (r *RemoteDevelopment) startMutagenSession() error {
 	}
 
 	return err
+}
+
+func (r *RemoteDevelopment) getMutagenSessionIgnores() ([]string, error) {
+	ignoreFilePath := filepath.Join(r.localSyncPath, mutagenIgnoreFilename)
+	if _, err := os.Stat(ignoreFilePath); errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	readFile, err := os.Open(ignoreFilePath)
+	if err != nil {
+		return nil, err
+	}
+	defer readFile.Close()
+
+	fileScanner := bufio.NewScanner(readFile)
+	fileScanner.Split(bufio.ScanLines)
+	ignores := []string{}
+	for fileScanner.Scan() {
+		ignorePath := strings.TrimSpace(fileScanner.Text())
+		if ignorePath == "" || strings.HasPrefix(ignorePath, "#") {
+			continue
+		}
+		ignores = append(ignores, ignorePath)
+	}
+
+	return ignores, nil
 }
 
 func (r *RemoteDevelopment) terminateMutagenSession() error {
@@ -153,7 +188,7 @@ func (r *RemoteDevelopment) getMutagenSessionName() (string, error) {
 		return "", err
 	}
 
-	return fmt.Sprintf("rd-%s", sessionKey[:16]), nil
+	return fmt.Sprintf("rd-%s", sessionKey), nil
 }
 
 func (r *RemoteDevelopment) getMutagenSessionKey() (string, error) {
@@ -164,7 +199,7 @@ func (r *RemoteDevelopment) getMutagenSessionKey() (string, error) {
 
 	plaintext := fmt.Sprintf("%s-%s-%s", r.remoteSyncPath, resource.GetName(), resource.GetNamespace())
 	hash := md5.Sum([]byte(plaintext))
-	return hex.EncodeToString(hash[:]), nil
+	return hex.EncodeToString(hash[:])[:16], nil
 }
 
 func getMutagenBinPath() (string, error) {
@@ -176,13 +211,18 @@ func getMutagenBinPath() (string, error) {
 	return filepath.Join(workspaceDir, getMutagenBinFilename()), nil
 }
 
-func getMutagenConfigFilePath() (string, error) {
+func (r *RemoteDevelopment) getMutagenConfigFilePath() (string, error) {
 	workspaceDir, err := util.GetRemoteDevWorkspaceDir()
 	if err != nil {
 		return "", err
 	}
 
-	return filepath.Join(workspaceDir, mutagenConfigFilename), nil
+	sessionKey, err := r.getMutagenSessionKey()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(workspaceDir, fmt.Sprintf(mutagenConfigFilenamePattern, sessionKey)), nil
 }
 
 func ensureMutagenBin() error {
