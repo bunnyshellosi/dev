@@ -60,13 +60,6 @@ func (r *RemoteDevelopment) SelectResource() error {
 		return err
 	}
 
-	if len(availableResources) == 1 {
-		resource := availableResources[0]
-		r.WithResource(resource)
-
-		return nil
-	}
-
 	selectItems := []string{}
 	resourcesItemsMap := map[string]Resource{}
 	for _, resourceItem := range availableResources {
