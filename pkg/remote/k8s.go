@@ -599,6 +599,7 @@ func (r *RemoteDevelopment) waitPodReady() error {
 	timeout := int64(120)
 	startTimestamp := time.Now().Unix()
 	for {
+		time.Sleep(1 * time.Second)
 		podList, err := r.kubernetesClient.ListPods(namespace, listOptions)
 		if err != nil {
 			return err
@@ -616,7 +617,6 @@ func (r *RemoteDevelopment) waitPodReady() error {
 			}
 		}
 
-		time.Sleep(1 * time.Second)
 		nowTimestamp := time.Now().Unix()
 		if nowTimestamp-startTimestamp >= timeout {
 			break
