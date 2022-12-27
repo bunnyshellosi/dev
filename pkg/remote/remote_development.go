@@ -49,7 +49,8 @@ type RemoteDevelopment struct {
 
 	stopChannel chan bool
 
-	startedAt int64
+	startedAt   int64
+	waitTimeout int64
 }
 
 func NewRemoteDevelopment() *RemoteDevelopment {
@@ -57,6 +58,7 @@ func NewRemoteDevelopment() *RemoteDevelopment {
 		stopChannel: make(chan bool),
 		spinner:     util.MakeSpinner(" Remote Development"),
 		startedAt:   time.Now().Unix(),
+		waitTimeout: 120,
 	}
 }
 
@@ -316,4 +318,9 @@ func (r *RemoteDevelopment) PrepareSSHTunnels(portMappings []string) error {
 		r.WithSSHTunnels(tunnel)
 	}
 	return nil
+}
+
+func (r *RemoteDevelopment) WithWaitTimeout(waitTimeout int64) *RemoteDevelopment {
+	r.waitTimeout = waitTimeout
+	return r
 }

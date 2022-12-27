@@ -19,13 +19,17 @@ func init() {
 		remoteSyncPath string
 
 		portMappings []string
+
+		waitTimeout int
 	)
 
 	command := &cobra.Command{
 		Use: "up",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			remoteDevelopment := remote.NewRemoteDevelopment()
-			remoteDevelopment.WithKubernetesClient(k8s.GetKubeConfigFilePath())
+			remoteDevelopment.
+				WithKubernetesClient(k8s.GetKubeConfigFilePath()).
+				WithWaitTimeout(int64(waitTimeout))
 
 			// wizard
 			if namespaceName != "" {
@@ -92,6 +96,7 @@ func init() {
 	command.Flags().StringVarP(&localSyncPath, "local-sync-path", "l", "", "Local folder path to sync")
 	command.Flags().StringVarP(&remoteSyncPath, "remote-sync-path", "r", "", "Remote folder path to sync")
 	command.Flags().StringSliceVarP(&portMappings, "portforward", "p", []string{}, "Port forward: '8080>3000'\nReverse port forward: '9003<9003'\nComma separated: '8080>3000,9003<9003'")
+	command.Flags().IntVarP(&waitTimeout, "wait-timeout", "w", 120, "Time to wait for pod to be ready")
 
 	mainCmd.AddCommand(command)
 }
