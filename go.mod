@@ -25,6 +25,7 @@ require (
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
 	k8s.io/kube-openapi v0.0.0-20221012153701-172d655c2280 // indirect
 )
 
@@ -43,6 +44,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/shiena/ansicolor v0.0.0-20200904210342-c7312218db18
 	github.com/spf13/cobra v1.5.0
+	github.com/thediveo/enumflag/v2 v2.0.1
 	golang.org/x/crypto v0.0.0-20220829220503-c86fa9a7ed90
 	golang.org/x/mod v0.7.0
 	golang.org/x/net v0.3.1-0.20221206200815-1e63c2f08a10 // indirect
