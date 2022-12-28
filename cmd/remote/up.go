@@ -10,30 +10,30 @@ import (
 )
 
 // +enum
-type SyncMode enumflag.Flag
+type syncMode enumflag.Flag
 
 const (
-	None SyncMode = iota
-	TwoWaySafe
-	TwoWayResolved
-	OneWaySafe
-	OneWayReplica
+	none syncMode = iota
+	twoWaySafe
+	twoWayResolved
+	oneWaySafe
+	oneWayReplica
 )
 
-var SyncModeIds = map[SyncMode][]string{
-	None:           {string(mutagenConfig.None)},
-	TwoWaySafe:     {string(mutagenConfig.TwoWaySafe)},
-	TwoWayResolved: {string(mutagenConfig.TwoWayResolved)},
-	OneWaySafe:     {string(mutagenConfig.OneWaySafe)},
-	OneWayReplica:  {string(mutagenConfig.OneWayReplica)},
+var syncModeIds = map[syncMode][]string{
+	none:           {string(mutagenConfig.None)},
+	twoWaySafe:     {string(mutagenConfig.TwoWaySafe)},
+	twoWayResolved: {string(mutagenConfig.TwoWayResolved)},
+	oneWaySafe:     {string(mutagenConfig.OneWaySafe)},
+	oneWayReplica:  {string(mutagenConfig.OneWayReplica)},
 }
 
-var SyncModeToMutagenMode = map[SyncMode]mutagenConfig.Mode{
-	None:           mutagenConfig.None,
-	TwoWaySafe:     mutagenConfig.TwoWaySafe,
-	TwoWayResolved: mutagenConfig.TwoWayResolved,
-	OneWaySafe:     mutagenConfig.OneWaySafe,
-	OneWayReplica:  mutagenConfig.OneWayReplica,
+var syncModeToMutagenMode = map[syncMode]mutagenConfig.Mode{
+	none:           mutagenConfig.None,
+	twoWaySafe:     mutagenConfig.TwoWaySafe,
+	twoWayResolved: mutagenConfig.TwoWayResolved,
+	oneWaySafe:     mutagenConfig.OneWaySafe,
+	oneWayReplica:  mutagenConfig.OneWayReplica,
 }
 
 func init() {
@@ -44,7 +44,7 @@ func init() {
 		daemonSetName   string
 		containerName   string
 
-		syncMode       SyncMode = TwoWayResolved
+		syncMode       syncMode = twoWayResolved
 		localSyncPath  string
 		remoteSyncPath string
 
@@ -61,7 +61,7 @@ func init() {
 			remoteDevelopment.
 				WithKubernetesClient(k8s.GetKubeConfigFilePath()).
 				WithWaitTimeout(int64(waitTimeout)).
-				WithSyncMode(SyncModeToMutagenMode[syncMode])
+				WithSyncMode(syncModeToMutagenMode[syncMode])
 
 			// wizard
 			if namespaceName != "" {
@@ -133,7 +133,7 @@ func init() {
 	command.Flags().IntVarP(&waitTimeout, "wait-timeout", "w", 120, "Time to wait for pod to be ready")
 	command.Flags().BoolVar(&noTTY, "no-tty", false, "Start remote development with no ssh terminal")
 	command.Flags().Var(
-		enumflag.New(&syncMode, "sync-mode", SyncModeIds, enumflag.EnumCaseSensitive),
+		enumflag.New(&syncMode, "sync-mode", syncModeIds, enumflag.EnumCaseSensitive),
 		"sync-mode",
 		"Mutagen sync mode.\nAvailable sync modes: none, two-way-safe, two-way-resolved, one-way-safe, one-way-replica.\n\"none\" sync mode disables mutagen.",
 	)
