@@ -21,6 +21,7 @@ func init() {
 		portMappings []string
 
 		waitTimeout int
+		noTTY       bool
 	)
 
 	command := &cobra.Command{
@@ -80,8 +81,10 @@ func init() {
 			}
 
 			// start
-			if err := remoteDevelopment.StartSSHTerminal(); err != nil {
-				return err
+			if !noTTY {
+				if err := remoteDevelopment.StartSSHTerminal(); err != nil {
+					return err
+				}
 			}
 
 			return remoteDevelopment.Wait()
@@ -97,6 +100,7 @@ func init() {
 	command.Flags().StringVarP(&remoteSyncPath, "remote-sync-path", "r", "", "Remote folder path to sync")
 	command.Flags().StringSliceVarP(&portMappings, "portforward", "p", []string{}, "Port forward: '8080>3000'\nReverse port forward: '9003<9003'\nComma separated: '8080>3000,9003<9003'")
 	command.Flags().IntVarP(&waitTimeout, "wait-timeout", "w", 120, "Time to wait for pod to be ready")
+	command.Flags().BoolVar(&noTTY, "no-tty", false, "Start remote development with no ssh terminal")
 
 	mainCmd.AddCommand(command)
 }
