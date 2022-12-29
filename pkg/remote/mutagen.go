@@ -34,6 +34,10 @@ const (
 )
 
 func (r *RemoteDevelopment) ensureMutagen() error {
+	if r.syncMode == mutagenConfig.None {
+		return nil
+	}
+
 	r.StartSpinner(" Setup Mutagen")
 	defer r.StopSpinner()
 
@@ -61,7 +65,7 @@ func (r *RemoteDevelopment) ensureMutagenConfigFile() error {
 		return err
 	}
 	ignore := mutagenConfig.NewIgnore().WithVCS(&enableVCS).WithPaths(sessionIgnores)
-	defaults := mutagenConfig.NewSyncDefaults().WithMode(mutagenConfig.TwoWayResolved).WithIgnore(ignore)
+	defaults := mutagenConfig.NewSyncDefaults().WithMode(r.syncMode).WithIgnore(ignore)
 	sync := mutagenConfig.NewSync().WithDefaults(defaults)
 	config := mutagenConfig.NewConfiguration().WithSync(sync)
 
@@ -74,6 +78,10 @@ func (r *RemoteDevelopment) ensureMutagenConfigFile() error {
 }
 
 func (r *RemoteDevelopment) startMutagenSession() error {
+	if r.syncMode == mutagenConfig.None {
+		return nil
+	}
+
 	r.StartSpinner(" Start Mutagen Session")
 	defer r.StopSpinner()
 

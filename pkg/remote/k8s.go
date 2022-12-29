@@ -596,7 +596,6 @@ func (r *RemoteDevelopment) waitPodReady() error {
 		LabelSelector: labels.Set(labelSelector.MatchLabels).String(),
 	}
 
-	timeout := int64(120)
 	startTimestamp := time.Now().Unix()
 	for {
 		time.Sleep(1 * time.Second)
@@ -618,7 +617,7 @@ func (r *RemoteDevelopment) waitPodReady() error {
 		}
 
 		nowTimestamp := time.Now().Unix()
-		if nowTimestamp-startTimestamp >= timeout {
+		if nowTimestamp-startTimestamp >= r.waitTimeout {
 			break
 		}
 	}

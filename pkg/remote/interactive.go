@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	mutagenConfig "bunnyshell.com/dev/pkg/mutagen/config"
+
 	"bunnyshell.com/dev/pkg/util"
 )
 
@@ -256,6 +258,10 @@ func (r *RemoteDevelopment) SelectContainer() error {
 }
 
 func (r *RemoteDevelopment) SelectLocalSyncPath() error {
+	if r.syncMode == mutagenConfig.None {
+		return nil
+	}
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
