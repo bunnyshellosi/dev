@@ -311,7 +311,7 @@ func (r *RemoteDevelopment) ensurePVC() error {
 	labels[MetadataActive] = "true"
 
 	resourceLimits := coreV1.ResourceList{
-		coreV1.ResourceStorage: resource.MustParse("5Gi"),
+		coreV1.ResourceStorage: resource.MustParse("7Gi"),
 	}
 
 	resource, err := r.getResource()
