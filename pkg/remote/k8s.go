@@ -427,8 +427,8 @@ func (r *RemoteDevelopment) prepareInitContainers(podSpec *applyCoreV1.PodSpecAp
 	workPermissionsInitContainer := applyCoreV1.Container().
 		WithName(ContainerNameWorkPermissions).
 		WithCommand("sh", "-c", fmt.Sprintf(
-			"mkdir -p -m 777 %s",
-			workVolumeAppSourceDir,
+			"chmod 777 %s",
+			workVolumesMountPath,
 		)).
 		WithImage(ContainerImageWorkPermissions).
 		WithImagePullPolicy(coreV1.PullIfNotPresent).
@@ -439,7 +439,7 @@ func (r *RemoteDevelopment) prepareInitContainers(podSpec *applyCoreV1.PodSpecAp
 	workInitContainer := applyCoreV1.Container().
 		WithName(ContainerNameWork).
 		WithCommand("sh", "-c", fmt.Sprintf(
-			"[ \"$(ls -A %s)\" ] || (cp -Rp %s/. %s; exit 0)",
+			"[ \"$(ls -A %s)\" ] || (cp -RpT %s %s; exit 0)",
 			workVolumeAppSourceDir,
 			r.remoteSyncPath,
 			workVolumeAppSourceDir,
