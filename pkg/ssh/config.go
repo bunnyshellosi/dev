@@ -12,6 +12,10 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+func GetConfigFilePath() (string, error) {
+	return getBunnyshellConfigFilePath()
+}
+
 func GetConfig() (*ssh_config.Config, error) {
 	configFile, err := getBunnyshellConfigFile()
 	if err != nil && errors.Is(err, os.ErrNotExist) {

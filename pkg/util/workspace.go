@@ -8,9 +8,28 @@ import (
 const (
 	BunnyshellWorkspaceDirname = ".bunnyshell"
 	RemoteDevDirname           = "remote-dev"
+
+	dirPermissionMask = 0700
 )
 
-func GetWorkspaceDir() (string, error) {
+var remoteDevWorkspace *string
+
+func GetRemoteDevWorkspaceDir() (string, error) {
+	if remoteDevWorkspace != nil {
+		return *remoteDevWorkspace, nil
+	}
+
+	path, err := ensureRemoteDevWorkspaceDir()
+	if err != nil {
+		return "", nil
+	}
+
+	remoteDevWorkspace = &path
+
+	return path, nil
+}
+
+func getWorkspaceDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -23,14 +42,16 @@ func GetWorkspaceDir() (string, error) {
 	return filepath.Join(home, BunnyshellWorkspaceDirname), nil
 }
 
-func GetRemoteDevWorkspaceDir() (string, error) {
-	workspaceDir, err := GetWorkspaceDir()
+func ensureRemoteDevWorkspaceDir() (string, error) {
+	workspaceDir, err := getWorkspaceDir()
 	if err != nil {
 		return "", err
 	}
 
 	path := filepath.Join(workspaceDir, RemoteDevDirname)
-	os.MkdirAll(path, 0700)
+	if err = os.MkdirAll(path, dirPermissionMask); err != nil {
+		return "", err
+	}
 
 	return path, nil
 }
