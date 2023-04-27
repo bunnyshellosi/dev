@@ -27,6 +27,8 @@ const (
 )
 
 type RemoteDevelopment struct {
+	ContainerName string
+
 	sshPrivateKeyPath string
 	sshPublicKeyPath  string
 

@@ -5,18 +5,24 @@ import (
 	"os"
 
 	mutagenConfig "bunnyshell.com/dev/pkg/mutagen/config"
+	coreV1 "k8s.io/api/core/v1"
 
 	"bunnyshell.com/dev/pkg/util"
 )
 
 var (
-	ErrNoNamespaces   = fmt.Errorf("no namespaces available")
+	ErrNoNamespaces = fmt.Errorf("no namespaces available")
+
+	ErrNoResources = fmt.Errorf("no resources available")
+
 	ErrNoDeployments  = fmt.Errorf("no deployments available")
 	ErrNoStatefulSets = fmt.Errorf("no statefulsets available")
 	ErrNoDaemonSets   = fmt.Errorf("no daemonset available")
 
 	ErrNoNamespaceSelected = fmt.Errorf("no namespace selected")
 	ErrNoResourceSelected  = fmt.Errorf("no resource selected")
+
+	ErrContainerNotFound = fmt.Errorf("container not found")
 )
 
 func (r *RemoteDevelopment) SelectNamespace() error {
@@ -60,6 +66,16 @@ func (r *RemoteDevelopment) SelectResource() error {
 	availableResources, err := r.getAvailableResourceFromNamespace(r.namespace.GetName())
 	if err != nil {
 		return err
+	}
+
+	if len(availableResources) == 0 {
+		return ErrNoResources
+	}
+
+	if len(availableResources) == 1 {
+		r.WithResource(availableResources[0])
+
+		return nil
 	}
 
 	selectItems := []string{}
@@ -131,6 +147,12 @@ func (r *RemoteDevelopment) SelectDeployment() error {
 		return ErrNoDeployments
 	}
 
+	if len(deployments.Items) == 1 {
+		r.WithDeployment(deployments.Items[0].DeepCopy())
+
+		return nil
+	}
+
 	items := []string{}
 	for _, item := range deployments.Items {
 		items = append(items, item.GetName())
@@ -165,6 +187,12 @@ func (r *RemoteDevelopment) SelectStatefulSet() error {
 
 	if len(statefulSets.Items) == 0 {
 		return ErrNoStatefulSets
+	}
+
+	if len(statefulSets.Items) == 1 {
+		r.WithStatefulSet(statefulSets.Items[0].DeepCopy())
+
+		return nil
 	}
 
 	items := []string{}
@@ -203,6 +231,12 @@ func (r *RemoteDevelopment) SelectDaemonSet() error {
 		return ErrNoDaemonSets
 	}
 
+	if len(daemonSets.Items) == 1 {
+		r.WithDaemonSet(daemonSets.Items[0].DeepCopy())
+
+		return nil
+	}
+
 	items := []string{}
 	for _, item := range daemonSets.Items {
 		items = append(items, item.GetName())
@@ -226,33 +260,28 @@ func (r *RemoteDevelopment) SelectDaemonSet() error {
 }
 
 func (r *RemoteDevelopment) SelectContainer() error {
-	podContainers, err := r.getResourceContainers()
-	if err != nil {
-		return err
-	}
-	if len(podContainers) == 1 {
-		r.WithContainer(podContainers[0].DeepCopy())
-		return nil
-	}
-
-	items := []string{}
-	for _, item := range podContainers {
-		items = append(items, item.Name)
-	}
-
-	container, err := util.Select("Select container", items)
+	containers, err := r.getResourceContainers()
 	if err != nil {
 		return err
 	}
 
-	for _, item := range podContainers {
-		if item.Name != container {
-			continue
+	if r.ContainerName != "" {
+		for _, container := range containers {
+			if container.Name == r.ContainerName {
+				r.WithContainer(container.DeepCopy())
+				return nil
+			}
 		}
 
-		r.WithContainer(item.DeepCopy())
-		return nil
+		return ErrContainerNotFound
 	}
+
+	container, err := r.selectContainer(containers)
+	if err != nil {
+		return err
+	}
+
+	r.WithContainer(container.DeepCopy())
 
 	return nil
 }
@@ -284,4 +313,28 @@ func (r *RemoteDevelopment) SelectRemoteSyncPath() error {
 
 	r.WithRemoteSyncPath(syncPath)
 	return nil
+}
+
+func (r *RemoteDevelopment) selectContainer(containers []coreV1.Container) (*coreV1.Container, error) {
+	if len(containers) == 1 {
+		return &containers[0], nil
+	}
+
+	items := []string{}
+	for _, item := range containers {
+		items = append(items, item.Name)
+	}
+
+	container, err := util.Select("Select container", items)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, item := range containers {
+		if item.Name == container {
+			return &item, nil
+		}
+	}
+
+	return nil, ErrContainerNotFound
 }
