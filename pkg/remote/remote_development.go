@@ -29,6 +29,8 @@ const (
 type RemoteDevelopment struct {
 	ContainerName string
 
+	AutoSelectOne bool
+
 	sshPrivateKeyPath string
 	sshPublicKeyPath  string
 
@@ -59,6 +61,8 @@ type RemoteDevelopment struct {
 
 func NewRemoteDevelopment() *RemoteDevelopment {
 	return &RemoteDevelopment{
+		AutoSelectOne: true,
+
 		stopChannel: make(chan bool),
 		spinner:     util.MakeSpinner(" Remote Development"),
 		syncMode:    mutagenConfig.TwoWayResolved,
