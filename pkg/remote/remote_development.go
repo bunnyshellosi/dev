@@ -31,7 +31,7 @@ type RemoteDevelopment struct {
 	ContainerName   string
 	ContainerConfig container.Config
 
-	AutoSelectOne bool
+	AutoSelectSingleResource bool
 
 	sshPrivateKeyPath string
 	sshPublicKeyPath  string
@@ -65,7 +65,7 @@ func NewRemoteDevelopment() *RemoteDevelopment {
 	return &RemoteDevelopment{
 		ContainerConfig: *container.NewConfig(),
 
-		AutoSelectOne: true,
+		AutoSelectSingleResource: true,
 
 		stopChannel: make(chan bool),
 		spinner:     util.MakeSpinner(" Remote Development"),

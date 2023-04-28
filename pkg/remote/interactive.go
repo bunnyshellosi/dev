@@ -35,7 +35,7 @@ func (r *RemoteDevelopment) SelectNamespace() error {
 		return ErrNoNamespaces
 	}
 
-	if len(namespaces.Items) == 1 && r.AutoSelectOne {
+	if len(namespaces.Items) == 1 && r.AutoSelectSingleResource {
 		r.namespace = namespaces.Items[0].DeepCopy()
 		return nil
 	}
@@ -72,7 +72,7 @@ func (r *RemoteDevelopment) SelectResource() error {
 		return ErrNoResources
 	}
 
-	if len(availableResources) == 1 && r.AutoSelectOne {
+	if len(availableResources) == 1 && r.AutoSelectSingleResource {
 		r.WithResource(availableResources[0])
 
 		return nil
@@ -147,7 +147,7 @@ func (r *RemoteDevelopment) SelectDeployment() error {
 		return ErrNoDeployments
 	}
 
-	if len(deployments.Items) == 1 && r.AutoSelectOne {
+	if len(deployments.Items) == 1 && r.AutoSelectSingleResource {
 		r.WithDeployment(deployments.Items[0].DeepCopy())
 
 		return nil
@@ -189,7 +189,7 @@ func (r *RemoteDevelopment) SelectStatefulSet() error {
 		return ErrNoStatefulSets
 	}
 
-	if len(statefulSets.Items) == 1 && r.AutoSelectOne {
+	if len(statefulSets.Items) == 1 && r.AutoSelectSingleResource {
 		r.WithStatefulSet(statefulSets.Items[0].DeepCopy())
 
 		return nil
@@ -231,7 +231,7 @@ func (r *RemoteDevelopment) SelectDaemonSet() error {
 		return ErrNoDaemonSets
 	}
 
-	if len(daemonSets.Items) == 1 && r.AutoSelectOne {
+	if len(daemonSets.Items) == 1 && r.AutoSelectSingleResource {
 		r.WithDaemonSet(daemonSets.Items[0].DeepCopy())
 
 		return nil
@@ -316,7 +316,7 @@ func (r *RemoteDevelopment) SelectRemoteSyncPath() error {
 }
 
 func (r *RemoteDevelopment) selectContainer(containers []coreV1.Container) (*coreV1.Container, error) {
-	if len(containers) == 1 && r.AutoSelectOne {
+	if len(containers) == 1 && r.AutoSelectSingleResource {
 		return &containers[0], nil
 	}
 
