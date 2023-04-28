@@ -499,6 +499,8 @@ func (r *RemoteDevelopment) prepareContainer(podSpec *applyCoreV1.PodSpecApplyCo
 		WithStartupProbe(nullProbe).
 		WithVolumeMounts(volumeMounts...)
 
+	r.ContainerConfig.ApplyTo(container)
+
 	podSpec.WithContainers(container)
 
 	return nil

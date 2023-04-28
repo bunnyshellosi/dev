@@ -45,12 +45,14 @@ func (sshTerminal *SSHTerminal) Start() error {
 	}
 	defer serverConn.Close()
 
-	session, err := serverConn.NewSession()
-	if err != nil {
+	if err := showMotd(serverConn); err != nil {
 		return err
 	}
 
-	session.Stdin, session.Stdout, session.Stderr = stdStreams()
+	session, err := makeSession(serverConn)
+	if err != nil {
+		return err
+	}
 
 	// try forwarding the SSH agent
 	sshAuthSock := os.Getenv(SSHAuthSockEnvVar)
@@ -94,4 +96,25 @@ func (sshTerminal *SSHTerminal) Start() error {
 	}
 
 	return session.Wait()
+}
+
+func makeSession(client *ssh.Client) (*ssh.Session, error) {
+	session, err := client.NewSession()
+	if err != nil {
+		return nil, err
+	}
+
+	session.Stdin, session.Stdout, session.Stderr = stdStreams()
+
+	return session, nil
+}
+
+// This should be moved to a ssh-server banner
+func showMotd(client *ssh.Client) error {
+	session, err := makeSession(client)
+	if err != nil {
+		return err
+	}
+
+	return session.Run("cat /opt/bunnyshell/motd.txt")
 }

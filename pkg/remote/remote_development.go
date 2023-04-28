@@ -8,6 +8,7 @@ import (
 
 	"bunnyshell.com/dev/pkg/k8s"
 	mutagenConfig "bunnyshell.com/dev/pkg/mutagen/config"
+	"bunnyshell.com/dev/pkg/remote/container"
 	"bunnyshell.com/dev/pkg/ssh"
 	"bunnyshell.com/dev/pkg/util"
 
@@ -27,6 +28,11 @@ const (
 )
 
 type RemoteDevelopment struct {
+	ContainerName   string
+	ContainerConfig container.Config
+
+	AutoSelectSingleResource bool
+
 	sshPrivateKeyPath string
 	sshPublicKeyPath  string
 
@@ -57,6 +63,10 @@ type RemoteDevelopment struct {
 
 func NewRemoteDevelopment() *RemoteDevelopment {
 	return &RemoteDevelopment{
+		ContainerConfig: *container.NewConfig(),
+
+		AutoSelectSingleResource: true,
+
 		stopChannel: make(chan bool),
 		spinner:     util.MakeSpinner(" Remote Development"),
 		syncMode:    mutagenConfig.TwoWayResolved,
