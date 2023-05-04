@@ -21,7 +21,7 @@ func NewEnviron() *Environ {
 	}
 }
 
-func (c *Environ) Set(name, value string) {
+func (c *Environ) Set(name string, value string) {
 	c.data[name] = value
 }
 
@@ -40,10 +40,7 @@ func (c *Environ) GetK8SConfiguration() []*applyCoreV1.EnvVarApplyConfiguration 
 	list := make([]*applyCoreV1.EnvVarApplyConfiguration, 0, len(c.data))
 
 	for key, value := range c.data {
-		list = append(list, &applyCoreV1.EnvVarApplyConfiguration{
-			Name:  &key,
-			Value: &value,
-		})
+		list = append(list, makeEnvVarApplyConfiguration(key, value))
 	}
 
 	return list
@@ -56,4 +53,11 @@ func parseDefinition(definition string) (key string, value string, err error) {
 	}
 
 	return parts[0], parts[1], nil
+}
+
+func makeEnvVarApplyConfiguration(key string, value string) *applyCoreV1.EnvVarApplyConfiguration {
+	return &applyCoreV1.EnvVarApplyConfiguration{
+		Name:  &key,
+		Value: &value,
+	}
 }
