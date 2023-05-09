@@ -416,6 +416,8 @@ func (r *RemoteDevelopment) prepareInitContainers(podSpec *applyCoreV1.PodSpecAp
 	binariesInitContainer := applyCoreV1.Container().
 		WithName(ContainerNameBinaries).
 		WithCommand("sh", "-c", fmt.Sprintf(
+			// copy binaries to the volume and create empty motd file with loose permissions
+			// MOTD is written to by start.sh under the user of the image used for the dev container
 			"cp -p /usr/local/bin/* %[1]s && echo > %[1]s/%[2]s && chmod 666 %[1]s/%[2]s",
 			binariesVolumeMountPath,
 			motdFileName,
