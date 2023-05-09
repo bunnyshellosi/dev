@@ -50,6 +50,8 @@ const (
 	ContainerNameWork             = "remote-dev-work"
 	ContainerImageWorkPermissions = "alpine:3.17"
 
+	motdFileName = "motd.txt"
+
 	// ConfigSourceDir = "config"
 )
 
@@ -413,7 +415,11 @@ func (r *RemoteDevelopment) prepareInitContainers(podSpec *applyCoreV1.PodSpecAp
 	binariesVolumeMountPath := "/remote-dev-bin"
 	binariesInitContainer := applyCoreV1.Container().
 		WithName(ContainerNameBinaries).
-		WithCommand("sh", "-c", fmt.Sprintf("cp -p /usr/local/bin/* %s", binariesVolumeMountPath)).
+		WithCommand("sh", "-c", fmt.Sprintf(
+			"cp -p /usr/local/bin/* %[1]s && echo > %[1]s/%[2]s && chmod 666 %[1]s/%[2]s",
+			binariesVolumeMountPath,
+			motdFileName,
+		)).
 		WithImage(image).
 		WithImagePullPolicy(pullPolicy).
 		WithVolumeMounts(applyCoreV1.VolumeMount().
@@ -475,6 +481,10 @@ func (r *RemoteDevelopment) prepareContainer(podSpec *applyCoreV1.PodSpecApplyCo
 		applyCoreV1.VolumeMount().
 			WithName(VolumeNameBinaries).
 			WithMountPath(binariesVolumeMountPath),
+		applyCoreV1.VolumeMount().
+			WithName(VolumeNameBinaries).
+			WithMountPath(basePath + motdFileName).
+			WithSubPath(motdFileName),
 		applyCoreV1.VolumeMount().
 			WithName(VolumeNameConfig).
 			WithMountPath(secretsVolumeMountPath),
