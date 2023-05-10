@@ -485,7 +485,7 @@ func (r *RemoteDevelopment) prepareContainer(podSpec *applyCoreV1.PodSpecApplyCo
 			WithMountPath(binariesVolumeMountPath),
 		applyCoreV1.VolumeMount().
 			WithName(VolumeNameBinaries).
-			WithMountPath(basePath + motdFileName).
+			WithMountPath(basePath + "/" + motdFileName).
 			WithSubPath(motdFileName),
 		applyCoreV1.VolumeMount().
 			WithName(VolumeNameConfig).
