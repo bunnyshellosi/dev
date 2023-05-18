@@ -111,10 +111,17 @@ func makeSession(client *ssh.Client) (*ssh.Session, error) {
 
 // This should be moved to a ssh-server banner
 func showMotd(client *ssh.Client) error {
-	session, err := makeSession(client)
+	session, err := client.NewSession()
 	if err != nil {
 		return err
 	}
 
-	return session.Run("cat /opt/bunnyshell/motd.txt")
+	data, err := session.CombinedOutput("cat /opt/bunnyshell/motd.txt")
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprint(os.Stdout, string(data))
+
+	return nil
 }
