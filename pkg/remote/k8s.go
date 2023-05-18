@@ -156,6 +156,10 @@ func (r *RemoteDevelopment) prepareResource() error {
 		return err
 	}
 
+	if err := r.resetResourceContainer(resource); err != nil {
+		return fmt.Errorf("cannot reset container: %w", err)
+	}
+
 	switch r.resourceType {
 	case Deployment:
 		return r.kubernetesClient.PatchDeployment(resource.GetNamespace(), resource.GetName(), data)
@@ -163,6 +167,42 @@ func (r *RemoteDevelopment) prepareResource() error {
 		return r.kubernetesClient.PatchStatefulSet(resource.GetNamespace(), resource.GetName(), data)
 	case DaemonSet:
 		return r.kubernetesClient.PatchDaemonSet(resource.GetNamespace(), resource.GetName(), data)
+	default:
+		return r.resourceTypeNotSupportedError()
+	}
+}
+
+func (r *RemoteDevelopment) resetResourceContainer(resource Resource) error {
+	containerIndex, err := r.getContainerIndex()
+	if err != nil {
+		return err
+	}
+
+	// we need to use replace because remove fails if the path is missing
+	resetJSON, err := json.Marshal([]map[string]any{
+		{
+			"op":    "replace",
+			"path":  fmt.Sprintf("/spec/template/spec/containers/%d/args", containerIndex),
+			"value": []string{},
+		},
+		{
+			"op":    "replace",
+			"path":  fmt.Sprintf("/spec/template/spec/containers/%d/env", containerIndex),
+			"value": []map[string]string{},
+		},
+	})
+
+	if err != nil {
+		return err
+	}
+
+	switch r.resourceType {
+	case Deployment:
+		return r.kubernetesClient.BatchPatchDeployment(resource.GetNamespace(), resource.GetName(), resetJSON)
+	case StatefulSet:
+		return r.kubernetesClient.BatchPatchStatefulSet(resource.GetNamespace(), resource.GetName(), resetJSON)
+	case DaemonSet:
+		return r.kubernetesClient.BatchPatchDaemonSet(resource.GetNamespace(), resource.GetName(), resetJSON)
 	default:
 		return r.resourceTypeNotSupportedError()
 	}
@@ -664,4 +704,23 @@ func (r *RemoteDevelopment) getResourceContainer(containerName string) (*coreV1.
 	default:
 		return nil, ErrNoResourceSelected
 	}
+}
+
+func (r *RemoteDevelopment) getContainerIndex() (int, error) {
+	if r.container == nil {
+		return -1, fmt.Errorf("%w: %s", ErrContainerNotFound, "<nil>")
+	}
+
+	containers, err := r.getResourceContainers()
+	if err != nil {
+		return -1, err
+	}
+
+	for i, container := range containers {
+		if container.Name == r.container.Name {
+			return i, nil
+		}
+	}
+
+	return -1, fmt.Errorf("%w: %s", ErrContainerNotFound, r.container.Name)
 }

@@ -179,6 +179,22 @@ func (k *KubernetesClient) PatchDaemonSet(namespace, name string, data []byte) e
 	return err
 }
 
+func (k *KubernetesClient) BatchPatchDeployment(namespace, name string, data []byte) error {
+	_, err := k.clientSet.AppsV1().Deployments(namespace).Patch(context.TODO(), name, types.JSONPatchType, data, apiMetaV1.PatchOptions{})
+
+	return err
+}
+
+func (k *KubernetesClient) BatchPatchStatefulSet(namespace, name string, data []byte) error {
+	_, err := k.clientSet.AppsV1().StatefulSets(namespace).Patch(context.TODO(), name, types.JSONPatchType, data, apiMetaV1.PatchOptions{})
+	return err
+}
+
+func (k *KubernetesClient) BatchPatchDaemonSet(namespace, name string, data []byte) error {
+	_, err := k.clientSet.AppsV1().DaemonSets(namespace).Patch(context.TODO(), name, types.JSONPatchType, data, apiMetaV1.PatchOptions{})
+	return err
+}
+
 func (k *KubernetesClient) ListPods(namespace string, listOptions apiMetaV1.ListOptions) (*coreV1.PodList, error) {
 	return k.clientSet.CoreV1().Pods(namespace).List(context.TODO(), listOptions)
 }
