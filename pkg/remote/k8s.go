@@ -156,6 +156,10 @@ func (r *RemoteDevelopment) prepareResource() error {
 		return err
 	}
 
+	if err := r.resetResourceContainer(resource); err != nil {
+		return fmt.Errorf("cannot reset container: %w", err)
+	}
+
 	switch r.resourceType {
 	case Deployment:
 		return r.kubernetesClient.PatchDeployment(resource.GetNamespace(), resource.GetName(), data)
@@ -163,6 +167,37 @@ func (r *RemoteDevelopment) prepareResource() error {
 		return r.kubernetesClient.PatchStatefulSet(resource.GetNamespace(), resource.GetName(), data)
 	case DaemonSet:
 		return r.kubernetesClient.PatchDaemonSet(resource.GetNamespace(), resource.GetName(), data)
+	default:
+		return r.resourceTypeNotSupportedError()
+	}
+}
+
+func (r *RemoteDevelopment) resetResourceContainer(resource Resource) error {
+	// we need to use replace because remove fails if the path is missing
+	resetJSON, err := json.Marshal([]map[string]any{
+		{
+			"op":    "replace",
+			"path":  "/spec/template/spec/containers/0/args",
+			"value": []string{},
+		},
+		{
+			"op":    "replace",
+			"path":  "/spec/template/spec/containers/0/env",
+			"value": []map[string]string{},
+		},
+	})
+
+	if err != nil {
+		return err
+	}
+
+	switch r.resourceType {
+	case Deployment:
+		return r.kubernetesClient.BatchPatchDeployment(resource.GetNamespace(), resource.GetName(), resetJSON)
+	case StatefulSet:
+		return r.kubernetesClient.BatchPatchStatefulSet(resource.GetNamespace(), resource.GetName(), resetJSON)
+	case DaemonSet:
+		return r.kubernetesClient.BatchPatchDaemonSet(resource.GetNamespace(), resource.GetName(), resetJSON)
 	default:
 		return r.resourceTypeNotSupportedError()
 	}
