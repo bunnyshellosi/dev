@@ -173,16 +173,21 @@ func (r *RemoteDevelopment) prepareResource() error {
 }
 
 func (r *RemoteDevelopment) resetResourceContainer(resource Resource) error {
+	containerIndex, err := r.getContainerIndex()
+	if err != nil {
+		return err
+	}
+
 	// we need to use replace because remove fails if the path is missing
 	resetJSON, err := json.Marshal([]map[string]any{
 		{
 			"op":    "replace",
-			"path":  "/spec/template/spec/containers/0/args",
+			"path":  fmt.Sprintf("/spec/template/spec/containers/%d/args", containerIndex),
 			"value": []string{},
 		},
 		{
 			"op":    "replace",
-			"path":  "/spec/template/spec/containers/0/env",
+			"path":  fmt.Sprintf("/spec/template/spec/containers/%d/env", containerIndex),
 			"value": []map[string]string{},
 		},
 	})
@@ -699,4 +704,23 @@ func (r *RemoteDevelopment) getResourceContainer(containerName string) (*coreV1.
 	default:
 		return nil, ErrNoResourceSelected
 	}
+}
+
+func (r *RemoteDevelopment) getContainerIndex() (int, error) {
+	if r.container == nil {
+		return -1, fmt.Errorf("%w: %s", ErrContainerNotFound, "<nil>")
+	}
+
+	containers, err := r.getResourceContainers()
+	if err != nil {
+		return -1, err
+	}
+
+	for i, container := range containers {
+		if container.Name == r.container.Name {
+			return i, nil
+		}
+	}
+
+	return -1, fmt.Errorf("%w: %s", ErrContainerNotFound, r.container.Name)
 }
