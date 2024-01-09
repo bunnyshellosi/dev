@@ -190,6 +190,21 @@ func (r *RemoteDevelopment) resetResourceContainer(resource Resource) error {
 			"path":  fmt.Sprintf("/spec/template/spec/containers/%d/env", containerIndex),
 			"value": []map[string]string{},
 		},
+		{
+			"op":    "replace",
+			"path":  fmt.Sprintf("/spec/template/spec/containers/%d/readinessProbe", containerIndex),
+			"value": nil,
+		},
+		{
+			"op":    "replace",
+			"path":  fmt.Sprintf("/spec/template/spec/containers/%d/livenessProbe", containerIndex),
+			"value": nil,
+		},
+		{
+			"op":    "replace",
+			"path":  fmt.Sprintf("/spec/template/spec/containers/%d/startupProbe", containerIndex),
+			"value": nil,
+		},
 	})
 
 	if err != nil {
