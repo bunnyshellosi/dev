@@ -385,7 +385,7 @@ func (r *RemoteDevelopment) ensurePVC() error {
 		WithLabels(labels).
 		WithSpec(applyCoreV1.PersistentVolumeClaimSpec().
 			WithAccessModes(coreV1.ReadWriteOnce).
-			WithResources(applyCoreV1.ResourceRequirements().
+			WithResources(applyCoreV1.VolumeResourceRequirements().
 				WithRequests(resourceLimits)))
 
 	return r.kubernetesClient.ApplyPVC(remoteDevPVC)
