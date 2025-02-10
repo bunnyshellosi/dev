@@ -35,6 +35,8 @@ const (
 	MetadataKubeCTLLastAppliedConf = "kubectl.kubernetes.io/last-applied-configuration"
 	MetadataK8SRevision            = "deployment.kubernetes.io/revision"
 
+	DebugMetadataActive = "debug.bunnyshell.com/active"
+
 	VolumeNameBinaries = "remote-dev-bin"
 	VolumeNameConfig   = "remote-dev-config"
 	VolumeNameWork     = "remote-dev-work"
