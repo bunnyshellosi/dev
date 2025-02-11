@@ -3,6 +3,7 @@ package debug
 
 import (
 	"fmt"
+	"strings"
 
 	coreV1 "k8s.io/api/core/v1"
 
@@ -264,6 +265,15 @@ func (d *DebugComponent) SelectContainer() error {
 		return err
 	}
 
+
+	initContainers, err := d.getResourceInitContainers()
+    if err != nil {
+        return err
+    }
+
+    initContainers = d.excludeRestrictedInitContainers(initContainers)
+
+    // Pods created from Bunnyshell have unique names in the unified initContainers and containers collection
 	if d.ContainerName != "" {
 		for _, container := range containers {
 			if container.Name == d.ContainerName {
@@ -272,39 +282,88 @@ func (d *DebugComponent) SelectContainer() error {
 			}
 		}
 
+		for _, initContainer := range initContainers {
+            if initContainer.Name == d.ContainerName {
+                d.WithInitContainer(initContainer.DeepCopy())
+                return nil
+            }
+        }
+
 		return ErrContainerNotFound
 	}
 
-	container, err := d.selectContainer(containers)
+	container, isInit, err := d.selectContainer(containers, initContainers)
 	if err != nil {
 		return err
 	}
 
-	d.WithContainer(container.DeepCopy())
+    if isInit {
+        d.WithInitContainer(container.DeepCopy())
+    } else {
+        d.WithContainer(container.DeepCopy())
+    }
 
 	return nil
 }
 
-func (d *DebugComponent) selectContainer(containers []coreV1.Container) (*coreV1.Container, error) {
-	if len(containers) == 1 && d.AutoSelectSingleResource {
-		return &containers[0], nil
+func (d *DebugComponent) selectContainer(containers []coreV1.Container, initContainers []coreV1.Container) (*coreV1.Container, bool, error) {
+	if (len(containers) + len(initContainers)) == 1 && d.AutoSelectSingleResource {
+	    if len(containers) == 1 {
+		    return &containers[0], false, nil
+		}
+
+        return &initContainers[0], true, nil
 	}
 
+    initPrefix := "init - "
 	items := []string{}
+	for _, item := range initContainers {
+        items = append(items, initPrefix + item.Name)
+    }
 	for _, item := range containers {
-		items = append(items, item.Name)
-	}
+        items = append(items, item.Name)
+    }
 
 	container, err := util.Select("Select container", items)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
+    for _, item := range initContainers {
+        if initPrefix + item.Name == container {
+            return &item, true, nil
+        }
+    }
 	for _, item := range containers {
 		if item.Name == container {
-			return &item, nil
+			return &item, false, nil
 		}
 	}
 
-	return nil, ErrContainerNotFound
+	return nil, false, ErrContainerNotFound
+}
+
+func (d *DebugComponent) excludeRestrictedInitContainers(containers []coreV1.Container) []coreV1.Container {
+    restrictedNames := []string{"bns-volume-permissions"}
+
+	// Convert restricted names to a map for O(1) lookups
+	restrictedMap := make(map[string]struct{})
+	for _, name := range restrictedNames {
+		restrictedMap[name] = struct{}{}
+	}
+
+	var result []coreV1.Container
+	for _, container := range containers {
+		if _, isRestricted := restrictedMap[container.Name]; isRestricted {
+			continue
+		}
+
+        if strings.HasPrefix(container.Name, "init-shared-path-") {
+            continue
+        }
+
+        result = append(result, container)
+	}
+
+	return result
 }

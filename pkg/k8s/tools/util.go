@@ -43,3 +43,30 @@ func GetDaemonSetContainerByName(daemonSet *appsV1.DaemonSet, containerName stri
 	containers := GetDaemonSetContainers(daemonSet)
 	return FilterContainerByName(containers, containerName)
 }
+
+func GetDeploymentInitContainers(deployment *appsV1.Deployment) []coreV1.Container {
+	return deployment.Spec.Template.Spec.InitContainers
+}
+
+func GetDeploymentInitContainerByName(deployment *appsV1.Deployment, initContainerName string) (*coreV1.Container, error) {
+	containers := GetDeploymentInitContainers(deployment)
+	return FilterContainerByName(containers, initContainerName)
+}
+
+func GetStatefulSetInitContainers(statefulSet *appsV1.StatefulSet) []coreV1.Container {
+	return statefulSet.Spec.Template.Spec.InitContainers
+}
+
+func GetStatefulSetInitContainerByName(statefulSet *appsV1.StatefulSet, initContainerName string) (*coreV1.Container, error) {
+	containers := GetStatefulSetInitContainers(statefulSet)
+	return FilterContainerByName(containers, initContainerName)
+}
+
+func GetDaemonSetInitContainers(daemonSet *appsV1.DaemonSet) []coreV1.Container {
+	return daemonSet.Spec.Template.Spec.InitContainers
+}
+
+func GetDaemonSetInitContainerByName(daemonSet *appsV1.DaemonSet, initContainerName string) (*coreV1.Container, error) {
+	containers := GetDaemonSetInitContainers(daemonSet)
+	return FilterContainerByName(containers, initContainerName)
+}

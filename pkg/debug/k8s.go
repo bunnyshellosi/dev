@@ -150,36 +150,36 @@ func (d *DebugComponent) prepareResource() error {
 }
 
 func (d *DebugComponent) resetResourceContainer(resource Resource) error {
-	containerIndex, err := d.getContainerIndex()
+	containerIndex, isInit, err := d.getContainerIndex()
 	if err != nil {
 		return err
 	}
+
+    specPath := "containers"
+    if isInit {
+        specPath = "initContainers"
+    }
 
 	// we need to use replace because remove fails if the path is missing
 	resetJSON, err := json.Marshal([]map[string]any{
 		{
 			"op":    "replace",
-			"path":  fmt.Sprintf("/spec/template/spec/containers/%d/args", containerIndex),
+			"path":  fmt.Sprintf("/spec/template/spec/%s/%d/args", specPath, containerIndex),
 			"value": []string{},
 		},
 		{
 			"op":    "replace",
-			"path":  fmt.Sprintf("/spec/template/spec/containers/%d/env", containerIndex),
-			"value": []map[string]string{},
-		},
-		{
-			"op":    "replace",
-			"path":  fmt.Sprintf("/spec/template/spec/containers/%d/readinessProbe", containerIndex),
+			"path":  fmt.Sprintf("/spec/template/spec/%s/%d/readinessProbe", specPath, containerIndex),
 			"value": nil,
 		},
 		{
 			"op":    "replace",
-			"path":  fmt.Sprintf("/spec/template/spec/containers/%d/livenessProbe", containerIndex),
+			"path":  fmt.Sprintf("/spec/template/spec/%s/%d/livenessProbe", specPath, containerIndex),
 			"value": nil,
 		},
 		{
 			"op":    "replace",
-			"path":  fmt.Sprintf("/spec/template/spec/containers/%d/startupProbe", containerIndex),
+			"path":  fmt.Sprintf("/spec/template/spec/%s/%d/startupProbe", specPath, containerIndex),
 			"value": nil,
 		},
 	})
@@ -374,18 +374,26 @@ func (d *DebugComponent) preparePodSpec(podTemplateSpec *applyCoreV1.PodTemplate
 }
 
 func (d *DebugComponent) prepareContainer(podSpec *applyCoreV1.PodSpecApplyConfiguration) error {
-	nullProbe := d.getNullProbeApplyConfiguration()
-
 	container := applyCoreV1.Container().
 		WithName(d.container.Name).
-		WithCommand("sh", "-c", "tail -f /dev/null").
-		WithLivenessProbe(nullProbe).
-		WithReadinessProbe(nullProbe).
-		WithStartupProbe(nullProbe)
+		WithCommand("sh", "-c", "tail -f /dev/null")
+
+	if !d.isInitContainer {
+	    nullProbe := d.getNullProbeApplyConfiguration()
+
+	    container.
+	        WithLivenessProbe(nullProbe).
+            WithReadinessProbe(nullProbe).
+            WithStartupProbe(nullProbe)
+	}
 
 	d.ContainerConfig.ApplyTo(container)
 
-	podSpec.WithContainers(container)
+    if d.isInitContainer {
+        podSpec.WithInitContainers(container)
+    } else {
+        podSpec.WithContainers(container)
+    }
 
 	return nil
 }
@@ -438,15 +446,27 @@ func (d *DebugComponent) waitPodReady() error {
 		}
 
 		for _, pod := range podList.Items {
-			if pod.DeletionTimestamp != nil || pod.Status.Phase != coreV1.PodRunning {
-				continue
-			}
+		    if d.isInitContainer {
+		        if pod.DeletionTimestamp != nil || pod.Status.Phase != coreV1.PodPending {
+                    continue
+                }
 
-			for _, containerStatus := range pod.Status.ContainerStatuses {
-				if containerStatus.Name == d.container.Name && containerStatus.Ready {
-					return nil
-				}
-			}
+                for _, containerStatus := range pod.Status.InitContainerStatuses {
+                    if containerStatus.Name == d.container.Name && containerStatus.Started != nil && *containerStatus.Started {
+                        return nil
+                    }
+                }
+		    } else {
+                if pod.DeletionTimestamp != nil || pod.Status.Phase != coreV1.PodRunning {
+                    continue
+                }
+
+                for _, containerStatus := range pod.Status.ContainerStatuses {
+                    if containerStatus.Name == d.container.Name && containerStatus.Ready {
+                        return nil
+                    }
+                }
+            }
 		}
 
 		nowTimestamp := time.Now().Unix()
@@ -456,7 +476,7 @@ func (d *DebugComponent) waitPodReady() error {
 	}
 
 	// timeout reached
-	return fmt.Errorf("pod not ready")
+	return fmt.Errorf("pod not ready for debugging")
 }
 
 func (d *DebugComponent) getResourceContainers() ([]coreV1.Container, error) {
@@ -485,21 +505,58 @@ func (d *DebugComponent) getResourceContainer(containerName string) (*coreV1.Con
 	}
 }
 
-func (d *DebugComponent) getContainerIndex() (int, error) {
+func (d *DebugComponent) getResourceInitContainers() ([]coreV1.Container, error) {
+	switch d.resourceType {
+	case Deployment:
+		return k8sTools.GetDeploymentInitContainers(d.deployment), nil
+	case StatefulSet:
+		return k8sTools.GetStatefulSetInitContainers(d.statefulSet), nil
+	case DaemonSet:
+		return k8sTools.GetDaemonSetInitContainers(d.daemonSet), nil
+	default:
+		return []coreV1.Container{}, d.resourceTypeNotSupportedError()
+	}
+}
+
+func (d *DebugComponent) getResourceInitContainer(containerName string) (*coreV1.Container, error) {
+	switch d.resourceType {
+	case Deployment:
+		return k8sTools.GetDeploymentInitContainerByName(d.deployment, containerName)
+	case StatefulSet:
+		return k8sTools.GetStatefulSetInitContainerByName(d.statefulSet, containerName)
+	case DaemonSet:
+		return k8sTools.GetDaemonSetInitContainerByName(d.daemonSet, containerName)
+	default:
+		return nil, ErrNoResourceSelected
+	}
+}
+
+func (d *DebugComponent) getContainerIndex() (int, bool, error) {
 	if d.container == nil {
-		return -1, fmt.Errorf("%w: %s", ErrContainerNotFound, "<nil>")
+		return -1, false, fmt.Errorf("%w: %s", ErrContainerNotFound, "<nil>")
 	}
 
 	containers, err := d.getResourceContainers()
 	if err != nil {
-		return -1, err
+		return -1, false, err
 	}
 
 	for i, container := range containers {
 		if container.Name == d.container.Name {
-			return i, nil
+			return i, false, nil
 		}
 	}
 
-	return -1, fmt.Errorf("%w: %s", ErrContainerNotFound, d.container.Name)
+    initContainers, err := d.getResourceInitContainers()
+    if err != nil {
+        return -1, true, err
+    }
+
+    for i, initContainer := range initContainers {
+        if initContainer.Name == d.container.Name {
+            return i, true, nil
+        }
+    }
+
+	return -1, false, fmt.Errorf("%w: %s", ErrContainerNotFound, d.container.Name)
 }

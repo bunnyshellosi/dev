@@ -17,7 +17,7 @@ func (d *DebugComponent) CanUp(forceRecreateResource bool) error {
     labels := resource.GetLabels()
     if active, found := labels[RemoteDevMetadataActive]; found {
         if active == "true" {
-            return fmt.Errorf("Cannot start debug session, Pod already in a remote-development session")
+            return fmt.Errorf("cannot start debug session, Pod already in a remote-development session")
         }
     }
 
@@ -36,7 +36,7 @@ func (d *DebugComponent) CanUp(forceRecreateResource bool) error {
 
                     return nil;
                 } else {
-                    return fmt.Errorf("Cannot start debug session, Pod already in another debug session on container %s.\nRun \"bns debug down\" command then try again.", containerName)
+                    return fmt.Errorf("cannot start debug session, Pod already in another debug session on container %s.\nRun \"bns debug stop\" command then try again", containerName)
                 }
             }
         }

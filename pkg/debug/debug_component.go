@@ -3,6 +3,7 @@ package debug
 import (
 	"fmt"
 	"time"
+	"strings"
 
 	"bunnyshell.com/dev/pkg/k8s"
 	"bunnyshell.com/dev/pkg/remote/container"
@@ -38,6 +39,8 @@ type DebugComponent struct {
 	statefulSet  *appsV1.StatefulSet
 	daemonSet    *appsV1.DaemonSet
 	container    *coreV1.Container
+
+	isInitContainer bool
 
 	shouldPrepareResource bool
 
@@ -188,13 +191,33 @@ func (d *DebugComponent) WithContainer(container *coreV1.Container) *DebugCompon
 	}
 
 	d.container = container
+	d.isInitContainer = false
+	return d
+}
+
+func (d *DebugComponent) WithInitContainer(container *coreV1.Container) *DebugComponent {
+	if d.resourceType == "" {
+		panic(fmt.Errorf("please select a resource first"))
+	}
+
+	d.container = container
+	d.isInitContainer = true
 	return d
 }
 
 func (d *DebugComponent) WithContainerName(containerName string) *DebugComponent {
 	container, err := d.getResourceContainer(containerName)
 	if err != nil {
-		panic(err)
+	    if !strings.HasSuffix(err.Error(), " not found") {
+	        panic(err)
+	    }
+
+		initContainer, err := d.getResourceInitContainer(containerName)
+		if err != nil {
+		    panic(err)
+		}
+
+        return d.WithInitContainer(initContainer)
 	}
 
 	return d.WithContainer(container)

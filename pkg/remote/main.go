@@ -17,7 +17,7 @@ func (r *RemoteDevelopment) CanUp() error {
     labels := resource.GetLabels()
     if active, found := labels[DebugMetadataActive]; found {
         if active == "true" {
-            return fmt.Errorf("Cannot start remote-development session, Pod already in a debug session")
+            return fmt.Errorf("cannot start remote-development session, Pod already in a debug session")
         }
     }
 
