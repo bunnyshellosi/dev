@@ -8,6 +8,22 @@ import (
 	"bunnyshell.com/dev/pkg/util"
 )
 
+func (r *RemoteDevelopment) CanUp() error {
+    resource, err := r.getResource()
+   	if err != nil {
+   		return err
+   	}
+
+    labels := resource.GetLabels()
+    if active, found := labels[DebugMetadataActive]; found {
+        if active == "true" {
+            return fmt.Errorf("cannot start remote-development session, Pod already in a debug session")
+        }
+    }
+
+    return nil
+}
+
 func (r *RemoteDevelopment) Up() error {
 	if err := r.ensureSSHKeys(); err != nil {
 		return err
