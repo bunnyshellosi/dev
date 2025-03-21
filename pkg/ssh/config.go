@@ -80,7 +80,9 @@ func IncludeBunnyshellConfig() error {
 	if isIncluded {
 		return nil
 	}
-	includeBunnyshellConfig(includeDirective)
+	if err := includeBunnyshellConfig(includeDirective); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -115,6 +117,10 @@ func includeBunnyshellConfig(includeDirective string) error {
 		return err
 	}
 
+	if err := ensureConfigFolder(); err != nil {
+		return err
+	}
+
 	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
@@ -129,6 +135,26 @@ func includeBunnyshellConfig(includeDirective string) error {
 	)
 	if _, err := file.WriteString(appendData); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func ensureConfigFolder() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	folderPath := filepath.Join(homeDir, ".ssh")
+
+	// Check if the folder exists
+	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
+		// Folder does not exist, create it
+		err := os.Mkdir(folderPath, 0700)
+		if err != nil {
+			return fmt.Errorf("error creating .ssh folder: %w", err)
+		}
 	}
 
 	return nil
