@@ -55,6 +55,8 @@ type RemoteDevelopment struct {
 	localSyncPath  string
 	remoteSyncPath string
 
+	shouldPrepareResource bool
+
 	stopChannel chan bool
 
 	startedAt   int64
@@ -66,6 +68,8 @@ func NewRemoteDevelopment() *RemoteDevelopment {
 		ContainerConfig: *container.NewConfig(),
 
 		AutoSelectSingleResource: true,
+
+		shouldPrepareResource: true,
 
 		stopChannel: make(chan bool),
 		spinner:     util.MakeSpinner(" Remote Development"),
