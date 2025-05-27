@@ -8,20 +8,43 @@ import (
 	"bunnyshell.com/dev/pkg/util"
 )
 
-func (r *RemoteDevelopment) CanUp() error {
-    resource, err := r.getResource()
-   	if err != nil {
-   		return err
-   	}
+func (r *RemoteDevelopment) CanUp(forceRecreateResource bool) error {
+	resource, err := r.getResource()
+	if err != nil {
+		return err
+	}
 
-    labels := resource.GetLabels()
-    if active, found := labels[DebugMetadataActive]; found {
-        if active == "true" {
-            return fmt.Errorf("cannot start remote-development session, Pod already in a debug session")
-        }
-    }
+	labels := resource.GetLabels()
+	if active, found := labels[DebugMetadataActive]; found {
+		if active == "true" {
+			return fmt.Errorf("cannot start remote-development session, Pod already in a debug session")
+		}
+	}
 
-    return nil
+	if active, found := labels[MetadataActive]; found {
+		if active == "true" {
+			annotations := resource.GetAnnotations()
+			if containerName, found := annotations[MetadataContainer]; found {
+				if containerName == r.container.Name {
+					r.shouldPrepareResource = forceRecreateResource
+
+					return nil
+				}
+
+				if forceRecreateResource {
+					r.shouldPrepareResource = true
+
+					return nil
+				} else {
+					return fmt.Errorf("cannot start  remote-development session, Pod already in another  remote-development session on container %s.\nRun \"bns remote-development down\" command then try again", containerName)
+				}
+			}
+		}
+	}
+
+	r.shouldPrepareResource = true
+
+	return nil
 }
 
 func (r *RemoteDevelopment) Up() error {
@@ -33,16 +56,20 @@ func (r *RemoteDevelopment) Up() error {
 		return err
 	}
 
-	if err := r.ensureSecret(); err != nil {
-		return err
-	}
+	if r.shouldPrepareResource {
+		if err := r.ensureSecret(); err != nil {
+			return err
+		}
 
-	if err := r.ensurePVC(); err != nil {
-		return err
-	}
+		if err := r.ensurePVC(); err != nil {
+			return err
+		}
 
-	if err := r.prepareResource(); err != nil {
-		return err
+		if err := r.prepareResource(); err != nil {
+			return err
+		}
+	} else {
+		fmt.Print("Skip re-preparing Pod\n")
 	}
 
 	if err := r.waitPodReady(); err != nil {
